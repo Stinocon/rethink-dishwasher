@@ -1,4 +1,10 @@
-# rethink
+# rethink — dishwasher fork
+
+> Fork of [anszom/rethink](https://github.com/anszom/rethink) adding the LG ThinQ
+> **dishwasher** definition (`cloud/devices/D0211.ts`, deviceType 204 — sold as
+> DB365TXS / DBC435TSL and similar). Everything else tracks upstream.
+> The Home Assistant add-on packaging lives in
+> [Stinocon/addons](https://github.com/Stinocon/addons) (`rethink-dishwasher/`).
 
 The goal of this project is to de-cloud LG ThinQ-branded appliances, meaning to communicate with them without using the official LG app and cloud service.
 The project is developed by reverse engineering various components of the ThinQ ecosystem.
