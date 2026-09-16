@@ -26,6 +26,19 @@ The TLV field **decoding** is **not implemented yet**: it is being written again
 captures of a real appliance. Until then the dishwasher is recognised but not translated to
 MQTT, so no entities appear in Home Assistant. Everything else works as upstream.
 
+## Why a fork instead of an upstream pull request
+
+Two reasons, in order:
+
+1. **Control over what I run.** I prefer to build and run my own add-on from my own repository,
+   even when it is a fork of someone else's work.
+2. **Test before contributing.** The dishwasher definition is developed and validated here, on a
+   real appliance, before it is ready to be offered upstream. Once it decodes a real cycle and
+   proves itself, an upstream pull request will follow.
+
+None of this would exist without the rethink authors and everyone who reverse-engineered ThinQ
+before us — this fork stands entirely on their work.
+
 ## Home Assistant add-on
 
 The add-on packaging lives in
