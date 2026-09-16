@@ -10,10 +10,10 @@ supports, installation, the management UI and the tooling, see the
 
 ## What this fork adds
 
-| File | What it is |
-| --- | --- |
+| File                                               | What it is                                                                        |
+| -------------------------------------------------- | --------------------------------------------------------------------------------- |
 | [`cloud/devices/D0211.ts`](cloud/devices/D0211.ts) | the dishwasher definition — registers the model and exposes the target entity set |
-| [`cloud/ha_bridge.ts`](cloud/ha_bridge.ts) | one registry line mapping `D0211` to that definition |
+| [`cloud/ha_bridge.ts`](cloud/ha_bridge.ts)         | one registry line mapping `D0211` to that definition                              |
 
 ## Status — dishwasher support is a scaffold
 
