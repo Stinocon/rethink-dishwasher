@@ -201,15 +201,42 @@ export default class Device extends AABBDevice {
         )
     }
 
-    // TODO: send the toDevice status query on connect (the hood sends
-    // `f0ed114101000000180403040000` to make the device push its current
-    // status). Determine the dishwasher's equivalent from the captures.
-    start() {}
+    // Status query on connect, verified 2026-09-17 via bridge capture: the LG
+    // cloud sends `f0ed1121010000001800` (identical to the washers) to make the
+    // device push its current status.
+    start() {
+        this.send(Buffer.from('F0ED1121010000001800', 'hex'))
+    }
 
-    // TODO: decode the dishwasher's AA...BB frames. Placeholder: log raw bytes
-    // so the first connected session is still observable in the add-on log.
+    // Status frame (AABB inner type 0x32). Layout verified 2026-09-17 from the bridge
+    // capture. Body = [0x32][flag 0xeb|0xec] record1 [record2]; the flag byte distinguishes
+    // one (`eb`) vs two (`ec`) records — record2 is the previous reading (1 min behind) and
+    // is ignored. The handshake hello also starts 0x32 but its second byte is 0x31 ("21"
+    // ASCII), so the flag check excludes it. Within record1 (offsets relative to the body):
+    //   buf[7]/[8]    initial time   (hour, minute)   e.g. 03 35 = 3:53
+    //   buf[11]/[12]  remaining time (hour, minute)   e.g. 02 35 = 2:53, 1/min countdown
+    // The bytes around them (buf[4..6], buf[13..19]) carry course/process/options and are
+    // still TODO — they only change at phase transitions.
     processAABB(buf: Buffer) {
-        console.log('D0211 undecoded frame:', buf.toString('hex'))
+        if (buf.length < 13 || buf[0] !== 0x32 || (buf[1] !== 0xeb && buf[1] !== 0xec)) {
+            console.log('D0211 unrecognized frame:', buf.toString('hex'))
+            return
+        }
+
+        const initialH = buf[7]
+        const initialM = buf[8]
+        const remainingH = buf[11]
+        const remainingM = buf[12]
+
+        // Sanity: minutes must be 0..59.
+        if (initialM > 59 || remainingM > 59 || initialH > 99 || remainingH > 99) {
+            console.log('D0211 suspect time fields:', buf.toString('hex'))
+            return
+        }
+
+        // Seconds, so HA's `duration` device_class renders HH:MM:SS.
+        this.publishProperty('initial_time', initialH * 3600 + initialM * 60)
+        this.publishProperty('remaining_time', remainingH * 3600 + remainingM * 60)
     }
 
     setProperty(prop: string, mqttValue: string) {
