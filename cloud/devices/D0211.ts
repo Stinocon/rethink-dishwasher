@@ -208,18 +208,18 @@ export default class Device extends AABBDevice {
         this.send(Buffer.from('F0ED1121010000001800', 'hex'))
     }
 
-    // Status frame (AABB inner type 0x32). Layout verified 2026-09-17 from the bridge
-    // capture. Body = [0x32][flag 0xeb|0xec] record1 [record2]; the flag byte distinguishes
-    // one (`eb`) vs two (`ec`) records — record2 is the previous reading (1 min behind) and
-    // is ignored. The handshake hello also starts 0x32 but its second byte is 0x31 ("21"
-    // ASCII), so the flag check excludes it. Within record1 (offsets relative to the body):
-    //   buf[7]/[8]    initial time   (hour, minute)   e.g. 03 35 = 3:53
-    //   buf[11]/[12]  remaining time (hour, minute)   e.g. 02 35 = 2:53, 1/min countdown
-    // The bytes around them (buf[13..19]) carry a status/option bitfield:
-    // buf[15] bit 3 (0x08) is the salt-refill flag (0 = ok, 1 = low), correlated
-    // 2026-09-17 (bit flipped 0x70→0x78 at 10:35, HA salt_refill on at 10:36:22).
-    // The other bits (course/process/options) are still TODO — they change at phase
-    // transitions or option changes.
+    // Status frame (AABB inner type 0x32). Layout verified 2026-09-17 from a full ECO-cycle
+    // bridge capture. Body = [0x32][flag 0xeb|0xec] record1 [record2]; record2 is the previous
+    // reading (1 min behind) and is ignored. The handshake hello also starts 0x32 but its
+    // second byte is 0x31 ("21" ASCII) — excluded by the flag check. Offsets relative to body:
+    //   buf[4]         state    0x02=RUNNING, 0x04=END (0x05 = transient completing)
+    //   buf[5]         process  0x02=Lavaggio, 0x03=Risciacquo, 0x04=Asciugatura, 0x00=NONE
+    //   buf[7]/[8]     initial time   (hour, minute)   e.g. 03 35 = 3:53
+    //   buf[11]/[12]   remaining time (hour, minute)   e.g. 02 35 = 2:53, 1/min countdown
+    //   buf[15]        status bitfield: bit 3 (0x08) = salt refill, bit 1 (0x02) = door open
+    //                  (Auto Open Dry; the cloud does NOT report this — our superset).
+    // Still TODO (need more washes/options): course byte, option bits (dual_zone/half_load/
+    // steam/high_temp/extra_dry/...), error codes, rinse_refill.
     processAABB(buf: Buffer) {
         if (buf.length < 16 || buf[0] !== 0x32 || (buf[1] !== 0xeb && buf[1] !== 0xec)) {
             console.log('D0211 unrecognized frame:', buf.toString('hex'))
@@ -241,7 +241,18 @@ export default class Device extends AABBDevice {
         this.publishProperty('initial_time', initialH * 3600 + initialM * 60)
         this.publishProperty('remaining_time', remainingH * 3600 + remainingM * 60)
 
+        const STATES: Record<number, string> = { 0x02: 'Lavaggio', 0x04: 'Finito' }
+        const PROCESS: Record<number, string> = {
+            0x02: 'Lavaggio',
+            0x03: 'Risciacquo',
+            0x04: 'Asciugatura',
+            0x00: 'None',
+        }
+        this.publishProperty('run_state', STATES[buf[4]] ?? String(buf[4]))
+        this.publishProperty('process_state', PROCESS[buf[5]] ?? String(buf[5]))
+
         this.publishProperty('salt_refill', buf[15] & 0x08 ? 'ON' : 'OFF')
+        this.publishProperty('door_open', buf[15] & 0x02 ? 'ON' : 'OFF')
     }
 
     setProperty(prop: string, mqttValue: string) {
