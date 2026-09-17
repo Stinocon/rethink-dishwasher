@@ -215,10 +215,13 @@ export default class Device extends AABBDevice {
     // ASCII), so the flag check excludes it. Within record1 (offsets relative to the body):
     //   buf[7]/[8]    initial time   (hour, minute)   e.g. 03 35 = 3:53
     //   buf[11]/[12]  remaining time (hour, minute)   e.g. 02 35 = 2:53, 1/min countdown
-    // The bytes around them (buf[4..6], buf[13..19]) carry course/process/options and are
-    // still TODO — they only change at phase transitions.
+    // The bytes around them (buf[13..19]) carry a status/option bitfield:
+    // buf[15] bit 3 (0x08) is the salt-refill flag (0 = ok, 1 = low), correlated
+    // 2026-09-17 (bit flipped 0x70→0x78 at 10:35, HA salt_refill on at 10:36:22).
+    // The other bits (course/process/options) are still TODO — they change at phase
+    // transitions or option changes.
     processAABB(buf: Buffer) {
-        if (buf.length < 13 || buf[0] !== 0x32 || (buf[1] !== 0xeb && buf[1] !== 0xec)) {
+        if (buf.length < 16 || buf[0] !== 0x32 || (buf[1] !== 0xeb && buf[1] !== 0xec)) {
             console.log('D0211 unrecognized frame:', buf.toString('hex'))
             return
         }
@@ -237,6 +240,8 @@ export default class Device extends AABBDevice {
         // Seconds, so HA's `duration` device_class renders HH:MM:SS.
         this.publishProperty('initial_time', initialH * 3600 + initialM * 60)
         this.publishProperty('remaining_time', remainingH * 3600 + remainingM * 60)
+
+        this.publishProperty('salt_refill', buf[15] & 0x08 ? 'ON' : 'OFF')
     }
 
     setProperty(prop: string, mqttValue: string) {
