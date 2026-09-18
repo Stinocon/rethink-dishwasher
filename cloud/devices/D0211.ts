@@ -212,16 +212,18 @@ export default class Device extends AABBDevice {
     // bridge capture. Body = [0x32][flag 0xeb|0xec] record1 [record2]; record2 is the previous
     // reading (1 min behind) and is ignored. The handshake hello also starts 0x32 but its
     // second byte is 0x31 ("21" ASCII) — excluded by the flag check. Offsets relative to body:
-    //   buf[4]         state    0x02=RUNNING, 0x04=END (0x05 = transient completing)
+    //   buf[4]         state    0x01=sensing, 0x02=RUNNING, 0x04=END (0x05 = transient completing)
     //   buf[5]         process  0x02=Lavaggio, 0x03=Risciacquo, 0x04=Asciugatura, 0x00=NONE
     //   buf[7]/[8]     initial time   (hour, minute)   e.g. 03 35 = 3:53
     //   buf[11]/[12]   remaining time (hour, minute)   e.g. 02 35 = 2:53, 1/min countdown
     //   buf[15]        status bitfield: bit 3 (0x08) = salt refill, bit 1 (0x02) = door open
     //                  (Auto Open Dry; the cloud does NOT report this — our superset).
-    // Still TODO (need more washes/options): course byte, option bits (dual_zone/half_load/
-    // steam/high_temp/extra_dry/...), error codes, rinse_refill.
+    //   buf[16]        course  0x00=Eco, 0x02=Auto (clears to 0x00 at cycle end) — verified
+    //                  2026-09-18 with a second full wash.
+    // Still TODO (need more washes/options): option bits (dual_zone/half_load/steam/high_temp/
+    // extra_dry/energy_saver/...), error codes, rinse_refill.
     processAABB(buf: Buffer) {
-        if (buf.length < 16 || buf[0] !== 0x32 || (buf[1] !== 0xeb && buf[1] !== 0xec)) {
+        if (buf.length < 28 || buf[0] !== 0x32 || (buf[1] !== 0xeb && buf[1] !== 0xec)) {
             console.log('D0211 unrecognized frame:', buf.toString('hex'))
             return
         }
@@ -241,15 +243,26 @@ export default class Device extends AABBDevice {
         this.publishProperty('initial_time', initialH * 3600 + initialM * 60)
         this.publishProperty('remaining_time', remainingH * 3600 + remainingM * 60)
 
-        const STATES: Record<number, string> = { 0x02: 'Lavaggio', 0x04: 'Finito' }
+        const STATES: Record<number, string> = {
+            0x01: 'Avvio',
+            0x02: 'Lavaggio',
+            0x04: 'Finito',
+            0x05: 'Completamento',
+        }
         const PROCESS: Record<number, string> = {
             0x02: 'Lavaggio',
             0x03: 'Risciacquo',
             0x04: 'Asciugatura',
             0x00: 'None',
         }
+        const COURSES: Record<number, string> = { 0x00: 'Eco', 0x02: 'Auto' }
         this.publishProperty('run_state', STATES[buf[4]] ?? String(buf[4]))
         this.publishProperty('process_state', PROCESS[buf[5]] ?? String(buf[5]))
+
+        // Course clears to 0x00 once the cycle ends (state 0x04/0x05); only publish
+        // a course while the cycle is active, otherwise 'None'.
+        const courseActive = buf[4] === 0x01 || buf[4] === 0x02
+        this.publishProperty('current_course', courseActive ? COURSES[buf[16]] ?? String(buf[16]) : 'None')
 
         this.publishProperty('salt_refill', buf[15] & 0x08 ? 'ON' : 'OFF')
         this.publishProperty('door_open', buf[15] & 0x02 ? 'ON' : 'OFF')
