@@ -15,16 +15,20 @@ supports, installation, the management UI and the tooling, see the
 | [`cloud/devices/D0211.ts`](cloud/devices/D0211.ts) | the dishwasher definition — registers the model and exposes the target entity set |
 | [`cloud/ha_bridge.ts`](cloud/ha_bridge.ts)         | one registry line mapping `D0211` to that definition                              |
 
-## Status — dishwasher support is a scaffold
+## Status — core decode implemented, options still pending
 
 The dishwasher is **registered** (rethink no longer reports `thinq2 device type D0211 unknown`)
 and the target entities are **exposed** — run state, current program, remaining time, cycle end,
 error state, salt / rinse-aid refill, and the option flags (door, child lock, auto door, dual
 zone, extra dry, high temp, night dry).
 
-The TLV field **decoding** is **not implemented yet**: it is being written against live raw
-captures of a real appliance. Until then the dishwasher is recognised but not translated to
-MQTT, so no entities appear in Home Assistant. Everything else works as upstream.
+The TLV **decode covers the core status fields**, validated against two full captures of a real
+appliance (Eco, and Auto + Energy Saver): run state, process state, initial/remaining time,
+salt refill, door open, and the **course** byte (Eco `0x00`, Auto `0x02`). Still unimplemented:
+the option bits (`energy_saver`, `dual_zone`, `half_load`, … — not carried in the status
+record), `error`, `rinse_refill`, and the full course enum. The decode is documented in the
+companion [lg-dishwasher-local](https://github.com/Stinocon/lg-dishwasher-local) project
+(`research/notes/raw-tlv-decode.md`).
 
 ## Why a fork instead of an upstream pull request
 
