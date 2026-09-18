@@ -147,6 +147,13 @@ export default class Device extends AABBDevice {
                         name: 'Extra dry',
                         icon: 'mdi:weather-sunny',
                     },
+                    energy_saver: {
+                        platform: 'binary_sensor',
+                        unique_id: '$deviceid-energy_saver',
+                        state_topic: '$this/energy_saver',
+                        name: 'Energy saver',
+                        icon: 'mdi:leaf',
+                    },
                     high_temp: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-high_temp',
@@ -215,13 +222,14 @@ export default class Device extends AABBDevice {
     //   buf[4]         state    0x01=sensing, 0x02=RUNNING, 0x04=END (0x05 = transient completing)
     //   buf[5]         process  0x02=Lavaggio, 0x03=Risciacquo, 0x04=Asciugatura, 0x00=NONE
     //   buf[7]/[8]     initial time   (hour, minute)   e.g. 03 35 = 3:53
+    //   buf[9]         course  0x05=Eco, 0x01=Auto (clears to 0x00 at cycle end) — verified
+    //                  2026-09-18 with three full washes.
     //   buf[11]/[12]   remaining time (hour, minute)   e.g. 02 35 = 2:53, 1/min countdown
     //   buf[15]        status bitfield: bit 3 (0x08) = salt refill, bit 1 (0x02) = door open
     //                  (Auto Open Dry; the cloud does NOT report this — our superset).
-    //   buf[16]        course  0x00=Eco, 0x02=Auto (clears to 0x00 at cycle end) — verified
-    //                  2026-09-18 with a second full wash.
-    // Still TODO (need more washes/options): option bits (dual_zone/half_load/steam/high_temp/
-    // extra_dry/energy_saver/...), error codes, rinse_refill.
+    //   buf[16]        options bitfield: bit 1 (0x02) = energy saver — verified 2026-09-18.
+    // Still TODO (need more washes/options): other option bits (dual_zone/half_load/steam/
+    // high_temp/extra_dry/...), error codes, rinse_refill.
     processAABB(buf: Buffer) {
         if (buf.length < 28 || buf[0] !== 0x32 || (buf[1] !== 0xeb && buf[1] !== 0xec)) {
             console.log('D0211 unrecognized frame:', buf.toString('hex'))
@@ -255,15 +263,16 @@ export default class Device extends AABBDevice {
             0x04: 'Asciugatura',
             0x00: 'None',
         }
-        const COURSES: Record<number, string> = { 0x00: 'Eco', 0x02: 'Auto' }
+        const COURSES: Record<number, string> = { 0x05: 'Eco', 0x01: 'Auto' }
         this.publishProperty('run_state', STATES[buf[4]] ?? String(buf[4]))
         this.publishProperty('process_state', PROCESS[buf[5]] ?? String(buf[5]))
 
         // Course clears to 0x00 once the cycle ends (state 0x04/0x05); only publish
         // a course while the cycle is active, otherwise 'None'.
         const courseActive = buf[4] === 0x01 || buf[4] === 0x02
-        this.publishProperty('current_course', courseActive ? (COURSES[buf[16]] ?? String(buf[16])) : 'None')
+        this.publishProperty('current_course', courseActive ? (COURSES[buf[9]] ?? String(buf[9])) : 'None')
 
+        this.publishProperty('energy_saver', buf[16] & 0x02 ? 'ON' : 'OFF')
         this.publishProperty('salt_refill', buf[15] & 0x08 ? 'ON' : 'OFF')
         this.publishProperty('door_open', buf[15] & 0x02 ? 'ON' : 'OFF')
     }
