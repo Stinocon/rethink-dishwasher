@@ -262,7 +262,7 @@ export default class Device extends AABBDevice {
         // Course clears to 0x00 once the cycle ends (state 0x04/0x05); only publish
         // a course while the cycle is active, otherwise 'None'.
         const courseActive = buf[4] === 0x01 || buf[4] === 0x02
-        this.publishProperty('current_course', courseActive ? COURSES[buf[16]] ?? String(buf[16]) : 'None')
+        this.publishProperty('current_course', courseActive ? (COURSES[buf[16]] ?? String(buf[16])) : 'None')
 
         this.publishProperty('salt_refill', buf[15] & 0x08 ? 'ON' : 'OFF')
         this.publishProperty('door_open', buf[15] & 0x02 ? 'ON' : 'OFF')
