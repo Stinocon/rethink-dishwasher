@@ -255,7 +255,8 @@ export default class Device extends AABBDevice {
     // for 0xeb (single record) the record at body[2..27] is the current reading. The handshake
     // hello also starts 0x32 but its second byte is 0x31 ("21" ASCII) — excluded by the flag
     // check. Offsets below are relative to the current record (base = 2 for 0xeb, 28 for 0xec):
-    //   [2]      state    0x01=sensing, 0x02=RUNNING, 0x04=END (0x05 = transient completing)
+    //   [2]      state    0x01=sensing, 0x02=RUNNING, 0x04=END, 0x05=transient completing,
+    //                     0x00=off/standby (after END, before the device stops reporting)
     //   [3]      process  0x02=Lavaggio, 0x03=Risciacquo, 0x04=Asciugatura, 0x05=Completamento,
     //                     0x00=NONE
     //   [5]/[6]  initial time   (hour, minute)   e.g. 03 05 = 3:05 (Intensive)
@@ -303,6 +304,7 @@ export default class Device extends AABBDevice {
         this.publishProperty('remaining_time', hms(remainingH, remainingM))
 
         const STATES: Record<number, string> = {
+            0x00: 'Spento',
             0x01: 'Avvio',
             0x02: 'In corso',
             0x04: 'Finito',
