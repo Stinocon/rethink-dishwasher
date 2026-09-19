@@ -249,31 +249,46 @@ export default class Device extends AABBDevice {
     }
 
     // Status frame (AABB inner type 0x32). Layout verified 2026-09-17 from a full ECO-cycle
-    // bridge capture. Body = [0x32][flag 0xeb|0xec] record1 [record2]; record2 is the previous
-    // reading (1 min behind) and is ignored. The handshake hello also starts 0x32 but its
-    // second byte is 0x31 ("21" ASCII) — excluded by the flag check. Offsets relative to body:
-    //   buf[4]         state    0x01=sensing, 0x02=RUNNING, 0x04=END (0x05 = transient completing)
-    //   buf[5]         process  0x02=Lavaggio, 0x03=Risciacquo, 0x04=Asciugatura, 0x00=NONE
-    //   buf[7]/[8]     initial time   (hour, minute)   e.g. 03 35 = 3:53
-    //   buf[9]         course  0x05=Eco, 0x01=Auto (clears to 0x00 at cycle end) — verified
-    //                  2026-09-18 with three full washes.
-    //   buf[11]/[12]   remaining time (hour, minute)   e.g. 02 35 = 2:53, 1/min countdown
-    //   buf[15]        status bitfield: bit 3 (0x08) = salt refill, bit 1 (0x02) = door open
-    //                  (Auto Open Dry; the cloud does NOT report this — our superset).
-    //   buf[16]        options bitfield: bit 1 (0x02) = energy saver — verified 2026-09-18.
-    //                  Like the course byte, it clears to 0x00 at cycle end (state 0x04/0x05).
+    // bridge capture and 2026-09-19 (record ordering + Intensive course). Body =
+    // [0x32][flag 0xeb|0xec] record1 [record2]. For 0xec (two records) record1 is the PRIOR
+    // minute and record2 is the CURRENT reading (remaining time is always smaller in record2);
+    // for 0xeb (single record) the record at body[2..27] is the current reading. The handshake
+    // hello also starts 0x32 but its second byte is 0x31 ("21" ASCII) — excluded by the flag
+    // check. Offsets below are relative to the current record (base = 2 for 0xeb, 28 for 0xec):
+    //   [2]      state    0x01=sensing, 0x02=RUNNING, 0x04=END (0x05 = transient completing)
+    //   [3]      process  0x02=Lavaggio, 0x03=Risciacquo, 0x04=Asciugatura, 0x05=Completamento,
+    //                     0x00=NONE
+    //   [5]/[6]  initial time   (hour, minute)   e.g. 03 05 = 3:05 (Intensive)
+    //   [7]      course  0x05=Eco, 0x01=Auto, 0x02=Intensive (clears to 0x00 at cycle end) —
+    //                    verified 2026-09-18/19 across Eco, Auto and Intensive washes.
+    //   [9]/[10] remaining time (hour, minute)   e.g. 02 35 = 2:53, 1/min countdown
+    //   [13]     status bitfield: bit 3 (0x08) = salt refill, bit 1 (0x02) = door open
+    //            (Auto Open Dry; the cloud does NOT report this — our superset).
+    //   [14]     options bitfield: bit 1 (0x02) = energy saver — verified 2026-09-18.
+    //            Like the course byte, it clears to 0x00 at cycle end (state 0x04/0x05).
     // Still TODO (need more washes/options): other option bits (dual_zone/half_load/steam/
     // high_temp/extra_dry/...), error codes, rinse_refill.
     processAABB(buf: Buffer) {
-        if (buf.length < 28 || buf[0] !== 0x32 || (buf[1] !== 0xeb && buf[1] !== 0xec)) {
+        if (buf[0] !== 0x32 || (buf[1] !== 0xeb && buf[1] !== 0xec)) {
             console.log('D0211 unrecognized frame:', buf.toString('hex'))
             return
         }
-
-        const initialH = buf[7]
-        const initialM = buf[8]
-        const remainingH = buf[11]
-        const remainingM = buf[12]
+        // 0xec carries two records: record1 = prior minute, record2 = current. Read the
+        // current one (skip record1 on 0xec). 0xeb carries a single (current) record.
+        const base = buf[1] === 0xec ? 28 : 2
+        if (buf.length < base + 26) {
+            console.log('D0211 short frame:', buf.toString('hex'))
+            return
+        }
+        const state = buf[base + 2]
+        const process = buf[base + 3]
+        const initialH = buf[base + 5]
+        const initialM = buf[base + 6]
+        const course = buf[base + 7]
+        const remainingH = buf[base + 9]
+        const remainingM = buf[base + 10]
+        const statusBits = buf[base + 13]
+        const optionBits = buf[base + 14]
 
         // Sanity: minutes must be 0..59.
         if (initialM > 59 || remainingM > 59 || initialH > 99 || remainingH > 99) {
@@ -297,29 +312,28 @@ export default class Device extends AABBDevice {
             0x02: 'Lavaggio',
             0x03: 'Risciacquo',
             0x04: 'Asciugatura',
+            0x05: 'Completamento',
             0x00: '-',
         }
-        const COURSES: Record<number, string> = { 0x05: 'Eco', 0x01: 'Auto' }
-        // run_state = granular machine state (buf[4]); process_state = phase (buf[5]).
-        this.publishProperty('run_state', STATES[buf[4]] ?? String(buf[4]))
-        this.publishProperty('process_state', PROCESS[buf[5]] ?? String(buf[5]))
+        const COURSES: Record<number, string> = { 0x05: 'Eco', 0x01: 'Auto', 0x02: 'Intensive' }
+        // run_state = granular machine state; process_state = phase.
+        this.publishProperty('run_state', STATES[state] ?? String(state))
+        this.publishProperty('process_state', PROCESS[process] ?? String(process))
 
         // `running` binary (on/off) mirrors the cloud's main on/off sensor — the entity the
         // Live Activity automation keys on (to:on / from:on to:off).
-        const running = buf[4] === 0x01 || buf[4] === 0x02
-        this.publishProperty('running', running ? 'ON' : 'OFF')
+        const active = state === 0x01 || state === 0x02
+        this.publishProperty('running', active ? 'ON' : 'OFF')
 
         // Course clears to 0x00 once the cycle ends (state 0x04/0x05); only publish
         // a course while the cycle is active, otherwise '-'.
-        const courseActive = buf[4] === 0x01 || buf[4] === 0x02
-        this.publishProperty('current_course', courseActive ? (COURSES[buf[9]] ?? String(buf[9])) : '-')
+        this.publishProperty('current_course', active ? (COURSES[course] ?? String(course)) : '-')
 
-        // Options bitfield (buf[16]) clears at cycle end like the course byte; gate on
+        // Options bitfield clears at cycle end like the course byte; gate on
         // active state so the entity reads OFF once the cycle finishes.
-        const optionActive = buf[4] === 0x01 || buf[4] === 0x02
-        this.publishProperty('energy_saver', optionActive && buf[16] & 0x02 ? 'ON' : 'OFF')
-        this.publishProperty('salt_refill', buf[15] & 0x08 ? 'ON' : 'OFF')
-        this.publishProperty('door_open', buf[15] & 0x02 ? 'ON' : 'OFF')
+        this.publishProperty('energy_saver', active && optionBits & 0x02 ? 'ON' : 'OFF')
+        this.publishProperty('salt_refill', statusBits & 0x08 ? 'ON' : 'OFF')
+        this.publishProperty('door_open', statusBits & 0x02 ? 'ON' : 'OFF')
     }
 
     setProperty(prop: string, mqttValue: string) {
