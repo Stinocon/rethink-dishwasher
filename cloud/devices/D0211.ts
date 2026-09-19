@@ -261,6 +261,7 @@ export default class Device extends AABBDevice {
     //   buf[15]        status bitfield: bit 3 (0x08) = salt refill, bit 1 (0x02) = door open
     //                  (Auto Open Dry; the cloud does NOT report this — our superset).
     //   buf[16]        options bitfield: bit 1 (0x02) = energy saver — verified 2026-09-18.
+    //                  Like the course byte, it clears to 0x00 at cycle end (state 0x04/0x05).
     // Still TODO (need more washes/options): other option bits (dual_zone/half_load/steam/
     // high_temp/extra_dry/...), error codes, rinse_refill.
     processAABB(buf: Buffer) {
@@ -313,7 +314,10 @@ export default class Device extends AABBDevice {
         const courseActive = buf[4] === 0x01 || buf[4] === 0x02
         this.publishProperty('current_course', courseActive ? (COURSES[buf[9]] ?? String(buf[9])) : '-')
 
-        this.publishProperty('energy_saver', buf[16] & 0x02 ? 'ON' : 'OFF')
+        // Options bitfield (buf[16]) clears at cycle end like the course byte; gate on
+        // active state so the entity reads OFF once the cycle finishes.
+        const optionActive = buf[4] === 0x01 || buf[4] === 0x02
+        this.publishProperty('energy_saver', optionActive && buf[16] & 0x02 ? 'ON' : 'OFF')
         this.publishProperty('salt_refill', buf[15] & 0x08 ? 'ON' : 'OFF')
         this.publishProperty('door_open', buf[15] & 0x02 ? 'ON' : 'OFF')
     }
