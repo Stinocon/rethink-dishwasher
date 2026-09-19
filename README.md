@@ -25,9 +25,14 @@ zone, extra dry, high temp, night dry).
 The TLV **decode covers the core status fields**, validated against three full captures of a
 real appliance (Eco, Auto + Energy Saver, and Auto without): run state, process state,
 initial/remaining time, salt refill, door open, the **course** byte (Eco `0x05`, Auto `0x01`),
-and the **energy saver** option (bit 1 of `buf[16]`). Still unimplemented: the other option
-bits (`dual_zone`, `half_load`, …), `error`, `rinse_refill`, and the full course enum. The
-decode is documented in the companion
+and the **energy saver** option (bit 1 of `buf[16]`). `run_state` is **granular** (Italian
+labels: `Avvio` / `In corso` / `Finito` / `Completamento`), and a separate `running` binary
+(on/off) is published for automations that need a simple active/inactive signal. Times are
+published as `HH:MM:SS` strings. Every component carries an explicit `default_entity_id`, so the
+entity IDs are deterministic (`sensor.lg_dishwasher_*` / `binary_sensor.lg_dishwasher_*`)
+rather than slugified from the English names. Still unimplemented: the other option bits
+(`dual_zone`, `half_load`, …), `error`, `rinse_refill`, and the full course enum. The decode
+is documented in the companion
 [lg-dishwasher-local](https://github.com/Stinocon/lg-dishwasher-local) project
 (`research/notes/raw-tlv-decode.md`).
 

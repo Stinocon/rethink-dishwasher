@@ -7,16 +7,17 @@ import AABBDevice from './aabb_device'
 
 // LG D0211 ThinQ dishwasher (deviceType 204) — DB365TXS / DBC435TSL.AASQEIS.
 //
-// SCAFFOLD — the TLV field decoding is still TODO. This registers the model so
-// rethink no longer reports "thinq2 device type D0211 unknown", and it exposes
-// the target entity set. The raw captures (research/captures/ in
-// lg-dishwasher-local) will pin the exact field IDs and packet framing that
-// replace the TODO markers below. The washer definitions (F_V8_Y___W.B_2QEUK)
-// are the decoding template.
+// Registers the model and exposes the target entity set. The TLV decode covers the core
+// status fields (validated against three full captures of a real appliance — Eco, Auto +
+// Energy Saver, Auto without); the remaining option bits / error / rinse_refill are still
+// TODO. See the processAABB comment for the field layout, and the companion
+// lg-dishwasher-local project (research/notes/raw-tlv-decode.md) for the full schema.
 //
 // The entity set mirrors the official ha-smartthinq-sensors integration (the
 // `lg_lavastoviglie_*` entities) so existing automations keep working, plus the
-// cloud fields that integration drops (superset).
+// cloud fields that integration drops (superset). Every component carries an explicit
+// `default_entity_id` so the entity_id is deterministic (`sensor.lg_dishwasher_*` /
+// `binary_sensor.lg_dishwasher_*`) instead of being slugified from the English name.
 
 export default class Device extends AABBDevice {
     constructor(HA: Connection, thinq: Thinq2Device, meta: Metadata) {
@@ -28,14 +29,24 @@ export default class Device extends AABBDevice {
                     run_state: {
                         platform: 'sensor',
                         unique_id: '$deviceid-run_state',
+                        default_entity_id: 'sensor.lg_dishwasher_run_state',
                         state_topic: '$this/run_state',
                         name: 'Run state',
                         icon: 'mdi:dishwasher',
                         device_class: 'enum',
                     },
+                    running: {
+                        platform: 'binary_sensor',
+                        unique_id: '$deviceid-running',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_running',
+                        state_topic: '$this/running',
+                        name: 'Running',
+                        icon: 'mdi:play-circle',
+                    },
                     current_course: {
                         platform: 'sensor',
                         unique_id: '$deviceid-current_course',
+                        default_entity_id: 'sensor.lg_dishwasher_current_course',
                         state_topic: '$this/current_course',
                         name: 'Current course',
                         icon: 'mdi:playlist-play',
@@ -44,6 +55,7 @@ export default class Device extends AABBDevice {
                     process_state: {
                         platform: 'sensor',
                         unique_id: '$deviceid-process_state',
+                        default_entity_id: 'sensor.lg_dishwasher_process_state',
                         state_topic: '$this/process_state',
                         name: 'Process state',
                         icon: 'mdi:state-machine',
@@ -52,6 +64,7 @@ export default class Device extends AABBDevice {
                     remaining_time: {
                         platform: 'sensor',
                         unique_id: '$deviceid-remaining_time',
+                        default_entity_id: 'sensor.lg_dishwasher_remaining_time',
                         state_topic: '$this/remaining_time',
                         name: 'Remaining time',
                         icon: 'mdi:timer-outline',
@@ -60,6 +73,7 @@ export default class Device extends AABBDevice {
                     countdown_time: {
                         platform: 'sensor',
                         unique_id: '$deviceid-countdown_time',
+                        default_entity_id: 'sensor.lg_dishwasher_countdown_time',
                         state_topic: '$this/countdown_time',
                         name: 'Countdown time',
                         icon: 'mdi:timer-sand',
@@ -68,6 +82,7 @@ export default class Device extends AABBDevice {
                     initial_time: {
                         platform: 'sensor',
                         unique_id: '$deviceid-initial_time',
+                        default_entity_id: 'sensor.lg_dishwasher_initial_time',
                         state_topic: '$this/initial_time',
                         name: 'Initial time',
                         icon: 'mdi:timer-outline',
@@ -76,6 +91,7 @@ export default class Device extends AABBDevice {
                     run_completed: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-run_completed',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_run_completed',
                         state_topic: '$this/run_completed',
                         name: 'Run completed',
                         icon: 'mdi:check-circle-outline',
@@ -83,6 +99,7 @@ export default class Device extends AABBDevice {
                     error_state: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-error_state',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_error_state',
                         state_topic: '$this/error_state',
                         name: 'Error state',
                         icon: 'mdi:alert-circle',
@@ -91,6 +108,7 @@ export default class Device extends AABBDevice {
                     error_message: {
                         platform: 'sensor',
                         unique_id: '$deviceid-error_message',
+                        default_entity_id: 'sensor.lg_dishwasher_error_message',
                         state_topic: '$this/error_message',
                         name: 'Error message',
                         icon: 'mdi:alert-circle-outline',
@@ -99,6 +117,7 @@ export default class Device extends AABBDevice {
                     salt_refill: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-salt_refill',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_salt_refill',
                         state_topic: '$this/salt_refill',
                         name: 'Salt refill',
                         icon: 'mdi:water',
@@ -106,6 +125,7 @@ export default class Device extends AABBDevice {
                     rinse_refill: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-rinse_refill',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_rinse_refill',
                         state_topic: '$this/rinse_refill',
                         name: 'Rinse aid refill',
                         icon: 'mdi:water-plus',
@@ -113,6 +133,7 @@ export default class Device extends AABBDevice {
                     door_open: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-door_open',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_door_open',
                         state_topic: '$this/door_open',
                         name: 'Door open',
                         icon: 'mdi:door-open',
@@ -121,6 +142,7 @@ export default class Device extends AABBDevice {
                     auto_door: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-auto_door',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_auto_door',
                         state_topic: '$this/auto_door',
                         name: 'Auto door',
                         icon: 'mdi:door',
@@ -128,6 +150,7 @@ export default class Device extends AABBDevice {
                     child_lock: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-child_lock',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_child_lock',
                         state_topic: '$this/child_lock',
                         name: 'Child lock',
                         icon: 'mdi:lock',
@@ -136,6 +159,7 @@ export default class Device extends AABBDevice {
                     dual_zone: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-dual_zone',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_dual_zone',
                         state_topic: '$this/dual_zone',
                         name: 'Dual zone',
                         icon: 'mdi:layers',
@@ -143,6 +167,7 @@ export default class Device extends AABBDevice {
                     extra_dry: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-extra_dry',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_extra_dry',
                         state_topic: '$this/extra_dry',
                         name: 'Extra dry',
                         icon: 'mdi:weather-sunny',
@@ -150,6 +175,7 @@ export default class Device extends AABBDevice {
                     energy_saver: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-energy_saver',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_energy_saver',
                         state_topic: '$this/energy_saver',
                         name: 'Energy saver',
                         icon: 'mdi:leaf',
@@ -157,6 +183,7 @@ export default class Device extends AABBDevice {
                     high_temp: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-high_temp',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_high_temp',
                         state_topic: '$this/high_temp',
                         name: 'High temp',
                         icon: 'mdi:thermometer-high',
@@ -164,6 +191,7 @@ export default class Device extends AABBDevice {
                     night_dry: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-night_dry',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_night_dry',
                         state_topic: '$this/night_dry',
                         name: 'Night dry',
                         icon: 'mdi:weather-night',
@@ -171,6 +199,7 @@ export default class Device extends AABBDevice {
                     steam: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-steam',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_steam',
                         state_topic: '$this/steam',
                         name: 'Steam',
                         icon: 'mdi:weather-fog',
@@ -178,6 +207,7 @@ export default class Device extends AABBDevice {
                     half_load: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-half_load',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_half_load',
                         state_topic: '$this/half_load',
                         name: 'Half load',
                         icon: 'mdi:shaker-outline',
@@ -185,6 +215,7 @@ export default class Device extends AABBDevice {
                     tub_clean_counter: {
                         platform: 'sensor',
                         unique_id: '$deviceid-tub_clean_counter',
+                        default_entity_id: 'sensor.lg_dishwasher_tub_clean_counter',
                         state_topic: '$this/tub_clean_counter',
                         name: 'Tub clean count',
                         icon: 'mdi:counter',
@@ -192,6 +223,7 @@ export default class Device extends AABBDevice {
                     delay_start: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-delay_start',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_delay_start',
                         state_topic: '$this/delay_start',
                         name: 'Delay start',
                         icon: 'mdi:timer-cog-outline',
@@ -199,6 +231,7 @@ export default class Device extends AABBDevice {
                     remote_start: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-remote_start',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_remote_start',
                         state_topic: '$this/remote_start',
                         name: 'Remote start',
                         icon: 'mdi:play-circle-outline',
@@ -247,13 +280,15 @@ export default class Device extends AABBDevice {
             return
         }
 
-        // Seconds, so HA's `duration` device_class renders HH:MM:SS.
-        this.publishProperty('initial_time', initialH * 3600 + initialM * 60)
-        this.publishProperty('remaining_time', remainingH * 3600 + remainingM * 60)
+        // HH:MM:SS strings, matching the cloud `lg_lavastoviglie_*` time format that the
+        // Live Activity automation parses with split(':') (H:MM:SS).
+        const hms = (h: number, m: number) => `${h}:${String(m).padStart(2, '0')}:00`
+        this.publishProperty('initial_time', hms(initialH, initialM))
+        this.publishProperty('remaining_time', hms(remainingH, remainingM))
 
         const STATES: Record<number, string> = {
             0x01: 'Avvio',
-            0x02: 'Lavaggio',
+            0x02: 'In corso',
             0x04: 'Finito',
             0x05: 'Completamento',
         }
@@ -261,16 +296,22 @@ export default class Device extends AABBDevice {
             0x02: 'Lavaggio',
             0x03: 'Risciacquo',
             0x04: 'Asciugatura',
-            0x00: 'None',
+            0x00: '-',
         }
         const COURSES: Record<number, string> = { 0x05: 'Eco', 0x01: 'Auto' }
+        // run_state = granular machine state (buf[4]); process_state = phase (buf[5]).
         this.publishProperty('run_state', STATES[buf[4]] ?? String(buf[4]))
         this.publishProperty('process_state', PROCESS[buf[5]] ?? String(buf[5]))
 
+        // `running` binary (on/off) mirrors the cloud's main on/off sensor — the entity the
+        // Live Activity automation keys on (to:on / from:on to:off).
+        const running = buf[4] === 0x01 || buf[4] === 0x02
+        this.publishProperty('running', running ? 'ON' : 'OFF')
+
         // Course clears to 0x00 once the cycle ends (state 0x04/0x05); only publish
-        // a course while the cycle is active, otherwise 'None'.
+        // a course while the cycle is active, otherwise '-'.
         const courseActive = buf[4] === 0x01 || buf[4] === 0x02
-        this.publishProperty('current_course', courseActive ? (COURSES[buf[9]] ?? String(buf[9])) : 'None')
+        this.publishProperty('current_course', courseActive ? (COURSES[buf[9]] ?? String(buf[9])) : '-')
 
         this.publishProperty('energy_saver', buf[16] & 0x02 ? 'ON' : 'OFF')
         this.publishProperty('salt_refill', buf[15] & 0x08 ? 'ON' : 'OFF')

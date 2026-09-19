@@ -181,6 +181,7 @@ export type ComponentInfo = {
     name?: string | null
     platform: string
     unique_id: string
+    default_entity_id?: string
 }
 
 export type DeviceDiscovery = {
