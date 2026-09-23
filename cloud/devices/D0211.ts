@@ -8,8 +8,8 @@ import AABBDevice from './aabb_device'
 // LG D0211 ThinQ dishwasher (deviceType 204) — DB365TXS / DBC435TSL.AASQEIS.
 //
 // Registers the model and exposes the target entity set. The TLV decode covers the core
-// status fields (validated against three full captures of a real appliance — Eco, Auto +
-// Energy Saver, Auto without); the remaining option bits / error / rinse_refill are still
+// status fields (validated against six bridge captures of a real appliance — Eco, Auto ±
+// Energy Saver, Intensive ± Steam); the remaining option bits / error / rinse_refill are still
 // TODO. See the processAABB comment for the field layout, and the companion
 // lg-dishwasher-local project (research/notes/raw-tlv-decode.md) for the full schema.
 //
@@ -251,7 +251,9 @@ export default class Device extends AABBDevice {
     // Status frame (AABB inner type 0x32). Layout verified 2026-09-17 from a full ECO-cycle
     // bridge capture and 2026-09-19 (record ordering + Intensive course). Body =
     // [0x32][flag 0xeb|0xec] record1 [record2]. For 0xec (two records) record1 is the PRIOR
-    // minute and record2 is the CURRENT reading (remaining time is always smaller in record2);
+    // minute and record2 is the CURRENT reading (remaining time is never larger in record2 —
+    // smaller, or equal when the minute has not ticked between the two records; verified across
+    // 1099 0xec frames, none with a larger record2);
     // for 0xeb (single record) the record at body[2..27] is the current reading. The handshake
     // hello also starts 0x32 but its second byte is 0x31 ("21" ASCII) — excluded by the flag
     // check. Offsets below are relative to the current record (base = 2 for 0xeb, 28 for 0xec):
@@ -265,9 +267,13 @@ export default class Device extends AABBDevice {
     //   [9]/[10] remaining time (hour, minute)   e.g. 02 35 = 2:53, 1/min countdown
     //   [13]     status bitfield: bit 3 (0x08) = salt refill, bit 1 (0x02) = door open
     //            (Auto Open Dry; the cloud does NOT report this — our superset).
-    //   [14]     options bitfield: bit 1 (0x02) = energy saver — verified 2026-09-18.
-    //            Like the course byte, it clears to 0x00 at cycle end (state 0x04/0x05).
-    // Still TODO (need more washes/options): other option bits (dual_zone/half_load/steam/
+    //   [14]     options bitfield: bit 1 (0x02) = energy saver (verified 2026-09-18),
+    //            bit 7 (0x80) = steam (verified 2026-09-23: same programme with and without the
+    //            option differs in this byte and the times only, cross-checked against LG's own
+    //            decode). It clears to 0x00 at cycle end — one record BEFORE the course byte,
+    //            i.e. already at state 0x05 while [7] still holds the course. Gated on the
+    //            active state like [7].
+    // Still TODO (need more washes/options): other option bits (dual_zone/half_load/
     // high_temp/extra_dry/...), error codes, rinse_refill.
     processAABB(buf: Buffer) {
         if (buf[0] !== 0x32 || (buf[1] !== 0xeb && buf[1] !== 0xec)) {
@@ -332,8 +338,9 @@ export default class Device extends AABBDevice {
         this.publishProperty('current_course', active ? (COURSES[course] ?? String(course)) : '-')
 
         // Options bitfield clears at cycle end like the course byte; gate on
-        // active state so the entity reads OFF once the cycle finishes.
+        // active state so the entities read OFF once the cycle finishes.
         this.publishProperty('energy_saver', active && optionBits & 0x02 ? 'ON' : 'OFF')
+        this.publishProperty('steam', active && optionBits & 0x80 ? 'ON' : 'OFF')
         this.publishProperty('salt_refill', statusBits & 0x08 ? 'ON' : 'OFF')
         this.publishProperty('door_open', statusBits & 0x02 ? 'ON' : 'OFF')
     }

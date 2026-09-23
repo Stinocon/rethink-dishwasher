@@ -15,23 +15,25 @@ supports, installation, the management UI and the tooling, see the
 | [`cloud/devices/D0211.ts`](cloud/devices/D0211.ts) | the dishwasher definition — registers the model and exposes the target entity set |
 | [`cloud/ha_bridge.ts`](cloud/ha_bridge.ts)         | one registry line mapping `D0211` to that definition                              |
 
-## Status — core decode implemented, options still pending
+## Status — core status decode implemented, remaining option bits pending
 
 The dishwasher is **registered** (rethink no longer reports `thinq2 device type D0211 unknown`)
 and the target entities are **exposed** — run state, current program, remaining time, cycle end,
 error state, salt / rinse-aid refill, and the option flags (door, child lock, auto door, dual
 zone, extra dry, high temp, night dry).
 
-The TLV **decode covers the core status fields**, validated against three full captures of a
-real appliance (Eco, Auto + Energy Saver, and Auto without): run state, process state,
-initial/remaining time, salt refill, door open, the **course** byte (Eco `0x05`, Auto `0x01`),
-and the **energy saver** option (bit 1 of `buf[16]`). `run_state` is **granular** (Italian
+The TLV **decode covers the core status fields**, validated against six bridge captures of a
+real appliance (Eco, Auto ± Energy Saver, Intensive ± Steam): run state, process state,
+initial/remaining time, salt refill, door open, the **course** byte (Eco `0x05`, Auto `0x01`,
+Intensive `0x02`), and the **energy saver** and **steam** options (bits 1 and 7 of `buf[16]`,
+each pinned by a one-option-at-a-time comparison against the same programme). `run_state` is **granular** (Italian
 labels: `Avvio` / `In corso` / `Finito` / `Completamento`), and a separate `running` binary
 (on/off) is published for automations that need a simple active/inactive signal. Times are
 published as `HH:MM:SS` strings. Every component carries an explicit `default_entity_id`, so the
 entity IDs are deterministic (`sensor.lg_dishwasher_*` / `binary_sensor.lg_dishwasher_*`)
 rather than slugified from the English names. Still unimplemented: the other option bits
-(`dual_zone`, `half_load`, …), `error`, `rinse_refill`, and the full course enum. The decode
+(`dual_zone`, `half_load`, `high_temp`, `extra_dry`), `error`, `rinse_refill`, and the full
+course enum. The decode
 is documented in the companion
 [lg-dishwasher-local](https://github.com/Stinocon/lg-dishwasher-local) project
 (`research/notes/raw-tlv-decode.md`).
