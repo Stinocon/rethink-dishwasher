@@ -1,163 +1,69 @@
-# rethink
+# rethink — dishwasher fork
 
-The goal of this project is to de-cloud LG ThinQ-branded appliances, meaning to communicate with them without using the official LG app and cloud service.
-The project is developed by reverse engineering various components of the ThinQ ecosystem.
+Fork of [anszom/rethink](https://github.com/anszom/rethink) that adds support for **LG ThinQ
+dishwashers** (model `D0211`, deviceType 204 — sold as DB365TXS / DBC435TSL and similar).
+
+Everything else is upstream rethink unchanged. For how rethink works, the appliances it already
+supports, installation, the management UI and the tooling, see the
+[upstream README](https://github.com/anszom/rethink) and
+[wiki](https://github.com/anszom/rethink/wiki).
+
+## What this fork adds
+
+| File                                                                     | What it is                                                                        |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| [`cloud/devices/D0211.ts`](cloud/devices/D0211.ts)                       | the dishwasher definition — registers the model and exposes the target entity set |
+| [`cloud/ha_bridge.ts`](cloud/ha_bridge.ts)                               | one registry line mapping `D0211` to that definition                              |
+| [`cloud/homeassistant.ts`](cloud/homeassistant.ts)                       | one optional `ComponentInfo` field, so a device can fix its entity ids explicitly |
+| [`tests/cloud/devices/D0211.test.ts`](tests/cloud/devices/D0211.test.ts) | the definition's tests, over real frames from the appliance                       |
 
 ## Status
 
-A working version of `rethink-cloud` is now available. This is a service which emulates the cloud part of ThinQ and translates the protocol to
-HomeAssistant-compatible MQTT.
+The dishwasher is **registered** — rethink no longer reports `thinq2 device type D0211 unknown` —
+and the whole published entity set is filled by the decode: run state, a separate `running`
+binary, process phase, current course, initial and remaining time, the cycle counter, the seven
+option flags (`energy_saver`, `steam`, `dual_zone`, `delay_start`, `extra_dry`, `high_temp`,
+`half_load`) and the four status flags (`door_open`, `salt_refill`, `child_lock`, `night_dry`).
 
-An optional "bridge" mode is also supported, in which the messages are forwarded to the actual LG ThinQ cloud. This can be used as a reverse-engineering
-aid, or simply to allow the user to still use the original LG app alongside HomeAssistant.
+The core fields are validated against captures of a real appliance (Eco, Auto ± Energy Saver,
+Intensive ± Steam, Auto + Dual Zone). Beyond them, **six option/status bit positions are
+transferred predictions** from an independent handler for the same record layout: published,
+flagged as such in the source, and unconfirmed until a wash toggles each one.
 
-## Supported appliances
+State labels are English (`Off` / `Initial` / `Running` / `End` / `Completing`), not the Italian
+ones the official integration uses, and the two time sensors publish whole minutes — what Home
+Assistant's `duration` device class requires. Every component carries an explicit
+`default_entity_id`, so the entity ids are deterministic (`sensor.lg_dishwasher_*` /
+`binary_sensor.lg_dishwasher_*`) instead of slugified from the English names.
 
-The following appliances are currently supported in rethink. The first column is the model name as reported by the appliance over ThinQ,
-the second one is the model it is sold as.
+Still undecoded, and therefore absent: the error codes, the rinse-aid indicator, the auto-door
+status, the delay-start countdown, remote start and the completed-cycle flag. The field layout and
+the provenance of every bit are in the `processAABB` comment in
+[`cloud/devices/D0211.ts`](cloud/devices/D0211.ts).
 
-#### Air conditioners
+## Why a fork instead of an upstream pull request
 
-| ThinQ model                  | Appliance                                | Support                                                                                                             |
-| ---------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| RAC_056905_WW, RAC_0B0001_WW | LG DualCool family wall-mounted IDUs     | 💎 high level of support. What's missing are mostly some features of higher-end models and more diagnostic coverage |
-| WIN_056905_WW                | LW1822HRSM, Smart Window Air Conditioner | 👍 mostly working                                                                                                   |
-| POT_056905_WW                | LP1022FVSM, Portable Air Conditioner     | 👍 mostly working                                                                                                   |
+Two reasons, in order:
 
-#### Fridges
+1. **Control over what I run.** I prefer to build and run my own add-on from my own repository,
+   even when it is a fork of someone else's work.
+2. **Test before contributing.** The dishwasher definition is developed and validated here, on a
+   real appliance, before it is ready to be offered upstream. Once it decodes a real cycle and
+   proves itself, an upstream pull request will follow.
 
-| ThinQ model     | Appliance                                                  | Support                                                                                     |
-| --------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| 2REF11EIDA\_\_4 | LF28H8330S, Standard-Depth 4-Door French Door Refrigerator | 🫤 preliminary support                                                                      |
-| 2RES1VE61NFA2   | GSJV70PZTE, Side by Side Refrigerator                      | 🫤 preliminary support                                                                      |
-| 2REB1GLVB1\_\_2 | GSB470BASZ, American Style Side by Side Refrigerator       | 🫤 preliminary support                                                                      |
-| 2RES1VE600FWC   | GA-B509CMUM                                                | 🫤 preliminary support                                                                      |
-| 2REF11EBIVPC4   | (model name unknown)                                       | 🫤 preliminary support: fridge/freezer temperature, door open, express freeze, Shabbat mode |
-
-#### Washing machines
-
-| ThinQ model                                      | Appliance                                        | Support                      |
-| ------------------------------------------------ | ------------------------------------------------ | ---------------------------- |
-| WTDN3 (ThinQ1)                                   | F2J7HG1W, Washing Machine                        | 👍 mostly working            |
-| Y_V8_Y\_\_\_W.B32QEUK                            | (model name unknown)                             | 🫤 preliminary support       |
-| F_V7_Y\_\_\_W.B_2QEUK                            | F4WV508S2E, Front-Loading Washing Machine        | 🫤 preliminary support       |
-| F_V8_Y\_\_\_W.B_2QEUK                            | F4WV709P1E, Front-Loading Washing Machine        | 🫤 preliminary support       |
-| F_V\_\_Y\_\_\_W.B_2QEUK                          | TW4V9RW9W                                        | 🫤 preliminary support       |
-| F_C\_\_Y\_\_\_W.A\_\_QEUK                        | F4WV709P1, Front-Loading Washing Machine         | 👍 mostly working            |
-| F_V7_Y\_\_\_W.B\_\_QEUK                          | F2V5PS0W, Front-Load Washing Machine             | 👍 mostly working            |
-| VCDWL2QEUK                                       | F4X7511TWS, Front-Load Washing Machine           | 👍 mostly working            |
-| T1789EFH_F                                       | WT7300CW, Top-Load Washing Machine               | 🫤 preliminary support       |
-| F3L2CYU\_\_                                      | WM3900HBA, Front-Load Washing Machine            | 👍 mostly working            |
-| F3L7CYK5W_US_WIFI                                | (model name unknown), Front-Load Washing Machine | 👍 mostly working            |
-| F_V\_\_F\_\_\_W.B_1QEUK, F_VA_F\_\_\_W.B\_\_QEUK | FV1413H2B / FV1413H2BA, Washing Machine          | 👍 mostly working            |
-| FAFXU25006                                       | WM5800HVA, Front-Load Washing Machine            | 👍 mostly working, read-only |
-| F_VB_F\_\_\_W.B_2QEUK                            | CV74J7S2QA, Washer/Dryer Combo                   | 👍 mostly working            |
-| Y_V8_F\_\_\_W.B_2QEUK                            | W4WR70E61, Washer/Dryer Combo                    | 👍 mostly working            |
-
-#### Dryers
-
-| ThinQ model          | Appliance                            | Support                      |
-| -------------------- | ------------------------------------ | ---------------------------- |
-| RV13U6AM8W_D_US_WIFI | DLE7300WE, Electric Dryer            | 🫤 preliminary support       |
-| RV13B6BSD_D_US_WIFI  | DLEX3900B, Electric Dryer            | 👍 mostly working            |
-| RV13B6ES_D_US_WIFI   | (model name unknown), Electric Dryer | 👍 mostly working            |
-| BDH_D30007_US        | DLHC5502V, Heat-Pump Dryer           | 👍 mostly working, read-only |
-
-#### WashTowers (combined washer+dryer)
-
-| ThinQ model       | Appliance             | Support           |
-| ----------------- | --------------------- | ----------------- |
-| WTL_FXU_BDV_NA_01 | WKEX200HBA, WashTower | 👍 mostly working |
-
-#### Dehumidifiers
-
-| ThinQ model    | Appliance                     | Support           |
-| -------------- | ----------------------------- | ----------------- |
-| DHUM_056905_WW | MD19GQGE0, Smart Dehumidifier | 👍 mostly working |
-
-#### Range hoods
-
-| ThinQ model | Appliance                                      | Support    |
-| ----------- | ---------------------------------------------- | ---------- |
-| STUDIO_HOOD | HCED3015D, probably works with multiple models | 👍 working |
-
-#### Ovens and ranges
-
-| ThinQ model | Appliance                               | Support                                                                    |
-| ----------- | --------------------------------------- | -------------------------------------------------------------------------- |
-| WLREL6323S  | LREL6323S, Electric Range               | 🫤 preliminary read-only oven and cooktop support                          |
-| WLSI_633\_  | LSIS6338FE, Slide-In Induction Range    | 👍 mostly working, read-only                                               |
-| WFV474PGV   | (model name unknown), Double Oven/Range | 🫤 preliminary status, timer, cancel, and constrained remote-start support |
-
-#### Microwave ovens
-
-| ThinQ model | Appliance                                   | Support                                           |
-| ----------- | ------------------------------------------- | ------------------------------------------------- |
-| WMVEM1825   | MVEM1825D/F, Smart Over-the-Range Microwave | 👍 mostly working                                 |
-| WMVEL2137   | MVEL2033F, Over-the-Range Microwave         | 👍 mostly working, with vent fan and lamp control |
-
-#### Stylers
-
-| ThinQ model     | Appliance | Support           |
-| --------------- | --------- | ----------------- |
-| ST_B_E4H01Y_APL | S5BBP     | 👍 mostly working |
-
-#### Dishwashers
-
-| ThinQ model | Appliance                                         | Support                           |
-| ----------- | ------------------------------------------------- | --------------------------------- |
-| D0211       | DB365TXS / DBC435TSL.AASQEIS, Built-in Dishwasher | 🫤 preliminary support, read-only |
-
-The supported appliances can be used "out of the box" with HomeAssistant or another compatible MQTT consumer.  
-Appliances not listed above can still be used with the bridge mode, but they will not be translated to MQTT. Contributions are welcome!
-
-Most of the findings from the reverse engineering process are available on the [project wiki](https://github.com/anszom/rethink/wiki) as well.
+None of this would exist without the rethink authors and everyone who reverse-engineered ThinQ
+before us — this fork stands entirely on their work.
 
 ## Home Assistant add-on
 
-This fork is packaged as a Home Assistant add-on in
-[Stinocon/addons](https://github.com/Stinocon/addons) → `rethink-dishwasher/`, which builds this
-fork at image-build time. That is how the D0211 dishwasher support above is meant to be run.
+The add-on packaging lives in
+[Stinocon/addons](https://github.com/Stinocon/addons) → `rethink-dishwasher/`. It builds this
+fork at image-build time.
 
-## Installation
+## License
 
-See the [instructions](https://github.com/anszom/rethink/wiki/Installing-rethink‐cloud).
+GPL-2.0, inherited from [anszom/rethink](https://github.com/anszom/rethink). See
+[`COPYING`](COPYING).
 
-See also the [Home Assistant App](https://github.com/anszom/rethink-ha/tree/master/rethink).
-
-## Management
-
-A simple web interface is available on a user-defined port (default: 44401). The interface supports:
-
-- listing the devices connected to rethink
-- monitoring their communications (with packet injection)
-- configuring the bridge mode
-
-## Code
-
-The following code is currently available:
-
-- [rethink-setup](rethink-setup.ts) - a simple tool to perform the "initial setup" from a Wi-Fi connected PC, without using the official LG app
-- [rethink-cloud](rethink-cloud.ts) - a server that replaces LG's cloud service. It's meant to be installed on your local network and hosts its own simplistic MQTT broker.
-
-Miscelanneous utilities:
-
-- [packet-parser](tools/packet-parser.ts) - an utility to interpret TLV-formatted packets received from the appliance via MQTT. It connects to rethink-cloud
-- [packet-sender](tools/packet-sender.ts) - an utility to create TLV-formatted packets & send them via MQTT to the appliance. It connects to rethink-cloud
-- [appliance simulator](tools/appliance-simulator) - a program which allows the Wi-Fi module to be operated without connection to an appliance. It simulates a minimum set of UART responses to activate the Wi-Fi module.
-- [lgcloud-monitor](tools/lgcloud-monitor.ts) - connects to the official LG cloud just like the official app would and displays real-time notifications about your devices straight from the MQTT feed. Useful for understanding how the LG cloud processes device updates.
-- [rethink-capture](tools/rethink-capture.ts) - records a device's live wire traffic (and optionally the time-aligned LG cloud notifications) to a JSONL capture file, with inline annotations, for offline reverse-engineering in an LLM-friendly format.
-- [mcp-server](tools/mcp-server.ts) - an [MCP](https://modelcontextprotocol.io) server that exposes the reverse-engineering toolkit (decode/encode packets, enumerate devices, capture device & cloud traffic, inject and probe packets) to an LLM agent.
-
-## Notice
-
-LG ThinQ is likely a registered trademark, or whatever, I don't care. The name is used here for identification purposes only. I'm not in any way affiliated with LG.
-
-## Warning
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-This means that if your device breaks, you get to fix it yourself or keep both pieces.
+LG ThinQ is likely a trademark of LG; the name is used here for identification only, with no
+affiliation. This program is distributed without warranty, as the GPL states.
