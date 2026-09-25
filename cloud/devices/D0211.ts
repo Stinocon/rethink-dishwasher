@@ -215,7 +215,11 @@ export default class Device extends AABBDevice {
     // for 0xeb (single record) the record at body[2..27] is the current reading. The handshake
     // hello also starts 0x32 but its second byte is 0x31 ("21" ASCII) — excluded by the flag
     // check. Offsets below are relative to the current record (base = 2 for 0xeb, 28 for 0xec):
-    //   [2]      state    machine state, one of the five values listed below
+    //   [2]      state    machine state, one of the five values listed below. 0x01 is the
+    //                     appliance's **resting state with the panel awake and a program
+    //                     selected**, not a cycle in progress: observed live on 2026-09-25 with
+    //                     the machine idle and its door open, at the same moment the cloud's own
+    //                     on/off sensor read `off`. Only 0x02 is a cycle in progress.
     //   [3]      process  phase within the cycle
     //   [5]/[6]  initial time   (hour, minute)   e.g. 03 05 = 3:05 (Intensive)
     //   [7]      course  0x05=Eco, 0x01=Auto, 0x02=Intensive (clears to 0x00 at cycle end) —
@@ -335,8 +339,10 @@ export default class Device extends AABBDevice {
         this.publishProperty('process_state', PROCESS[process] ?? String(process))
 
         // `running` binary (on/off) mirrors the cloud's main on/off sensor — the entity the
-        // Live Activity automation keys on (to:on / from:on to:off).
-        const active = state === 0x01 || state === 0x02
+        // Live Activity automation keys on (to:on / from:on to:off). Only 0x02 counts: 0x01 is
+        // the panel awake with a program selected (see the layout note above), and treating it
+        // as running raised a live activity on an idle machine.
+        const active = state === 0x02
         this.publishProperty('running', active ? 'ON' : 'OFF')
 
         // Course clears to 0x00 once the cycle ends (state 0x04/0x05); only publish

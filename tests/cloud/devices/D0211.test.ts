@@ -20,9 +20,17 @@ const OPTION_BYTE = 14
 const STATUS_BYTE = 13
 const CURRENT_RECORD_0XEC = 30
 
-// Sensing, steam selected: state 0x01, course 0x02 (Intensive), rec[14]=0x80, door open
-// (rec[13]=0x72) while the load is being prepared. 0xeb = single (current) record.
+// State 0x01 with a program selected on the panel: course 0x02 (Intensive) and the steam bit
+// set while the load is prepared. 0xeb = single (current) record. It is the same state the
+// appliance reports while merely idle (see IDLE_ECO), so no cycle entity here is ON.
 const SENSING_STEAM = buf('AA2032EB0018010000040B0200040B0000728002040100000000000000004CBB')
+
+// Idle with the panel awake, 2026-09-25 12:15:52, straight off the live bridge after the
+// switch: the cycle had ended at 11:01 and the door was open, while the cloud's own on/off
+// sensor read `off`. State 0x01, process 0x00, course 0x05 (Eco = 3:53 selected on the panel).
+const IDLE_ECO = buf(
+    'AA3A32EC001801000003350500033500007200020401000000000000000008180100000335050003350000720002040100000000000000004DBB',
+)
 
 // RUNNING, steam on: record1 is the rinsing minute, record2 the drying one (current).
 const RUNNING_DRY_STEAM = buf(
@@ -260,19 +268,34 @@ describe(MODEL_ID, () => {
         }
     })
 
-    test('steam is ON while sensing (state 0x01), i.e. before the cycle runs', () => {
+    test('idle with the panel awake (state 0x01) is not running', () => {
+        // The case the captures could not show: after END this appliance falls silent, so a
+        // resting-but-awake panel was never observed until it ran against the real bridge.
+        const { ha, thinq } = makeDevice()
+        thinq.emit('data', IDLE_ECO)
+        const props = propsOf(ha)
+
+        assert.equal(props.run_state, 'Initial')
+        assert.equal(props.process_state, '-')
+        assert.equal(props.running, 'OFF', 'a resting panel is not a cycle')
+        assert.equal(props.current_course, '-', 'nothing is selected for a cycle')
+        assert.equal(props.initial_time, 233)
+        assert.equal(props.remaining_time, 233)
+        assert.equal(props.door_open, 'ON')
+        for (const prop of OPTION_PROPS) assert.equal(props[prop], 'OFF', `${prop} OFF`)
+    })
+
+    test('state 0x01 with options selected is still not a cycle', () => {
         const { ha, thinq } = makeDevice()
         thinq.emit('data', SENSING_STEAM)
         const props = propsOf(ha)
 
-        assert.equal(props.steam, 'ON')
         assert.equal(props.run_state, 'Initial')
         assert.equal(props.process_state, '-')
-        assert.equal(props.running, 'ON')
+        assert.equal(props.running, 'OFF')
+        assert.equal(props.current_course, '-')
+        assert.equal(props.steam, 'OFF')
         assert.equal(props.door_open, 'ON')
-        // The single-record (0xeb) offsets for the course and the two times, which no other
-        // frame exercises: a wrong base would leave them wrong and unnoticed.
-        assert.equal(props.current_course, 'Intensive')
         assert.equal(props.initial_time, 251)
         assert.equal(props.remaining_time, 251)
     })
