@@ -1,8 +1,7 @@
 # rethink — dishwasher fork
 
-> **This is the pre-rebase development line.** The current one is `rebase/v0.1.0` — the D0211
-> handler rebased onto rethink `v0.1.0`, and the source the add-on builds (see below). `master`
-> is kept as the rollback.
+> **This is the pre-rebase development line**, kept as a rollback. The current line is `master`:
+> the D0211 handler rebased onto rethink `v0.1.0`, and the source the add-on builds (see below).
 
 Fork of [anszom/rethink](https://github.com/anszom/rethink) that adds support for **LG ThinQ
 dishwashers** (model `D0211`, deviceType 204 — sold as DB365TXS / DBC435TSL and similar).
