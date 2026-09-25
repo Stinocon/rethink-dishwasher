@@ -113,6 +113,12 @@ Appliances not listed above can still be used with the bridge mode, but they wil
 
 Most of the findings from the reverse engineering process are available on the [project wiki](https://github.com/anszom/rethink/wiki) as well.
 
+## Home Assistant add-on
+
+This fork is packaged as a Home Assistant add-on in
+[Stinocon/addons](https://github.com/Stinocon/addons) → `rethink-dishwasher/`, which builds this
+fork at image-build time. That is how the D0211 dishwasher support above is meant to be run.
+
 ## Installation
 
 See the [instructions](https://github.com/anszom/rethink/wiki/Installing-rethink‐cloud).
