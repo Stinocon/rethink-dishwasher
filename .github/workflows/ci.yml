@@ -4,6 +4,7 @@ on:
     push:
         branches:
             - master
+            - rebase/v0.1.0
     pull_request:
 
 permissions:
