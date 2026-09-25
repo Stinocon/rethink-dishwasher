@@ -102,6 +102,12 @@ the second one is the model it is sold as.
 | --------------- | --------- | ----------------- |
 | ST_B_E4H01Y_APL | S5BBP     | 👍 mostly working |
 
+#### Dishwashers
+
+| ThinQ model | Appliance                                         | Support                           |
+| ----------- | ------------------------------------------------- | --------------------------------- |
+| D0211       | DB365TXS / DBC435TSL.AASQEIS, Built-in Dishwasher | 🫤 preliminary support, read-only |
+
 The supported appliances can be used "out of the box" with HomeAssistant or another compatible MQTT consumer.  
 Appliances not listed above can still be used with the bridge mode, but they will not be translated to MQTT. Contributions are welcome!
 
