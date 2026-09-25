@@ -8,8 +8,7 @@ const DEVICE_ID = 'test-id'
 const MODEL_ID = 'D0211'
 const META: Metadata = { modelId: MODEL_ID, modelName: MODEL_ID, swVersion: '1' }
 
-// Real wire frames from bridge captures of a DB365TXS / DBC435TSL dishwasher (the evidence
-// lives in the companion lg-dishwasher-local project, research/notes/raw-tlv-decode.md).
+// Real wire frames from bridge captures of a DB365TXS / DBC435TSL dishwasher.
 //
 // These are complete AABB packets: the driver strips the AA+length prefix and the checksum+BB
 // suffix before processAABB, so inside the body index 0 is the inner type, the CURRENT record

@@ -17,8 +17,7 @@ import log from '@/util/logging'
 // positions stay flagged as predictions until a wash confirms them. Still undecoded and
 // therefore absent: the error codes, the rinse-aid indicator, the auto-door status, the
 // delay-start countdown, remote start and the completed-cycle flag.
-// See the processAABB comment for the field layout and the provenance of every bit, and the
-// companion lg-dishwasher-local project (research/notes/raw-tlv-decode.md) for the full schema.
+// See the processAABB comment for the field layout and the provenance of every bit.
 //
 // The entity set mirrors the official ha-smartthinq-sensors integration (the
 // `lg_lavastoviglie_*` entities), plus the cloud fields that integration drops (superset).
