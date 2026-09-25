@@ -10,8 +10,7 @@ import AABBDevice from './aabb_device'
 // Registers the model and exposes the target entity set. The TLV decode covers the core
 // status fields (validated against six bridge captures of a real appliance — Eco, Auto ±
 // Energy Saver, Intensive ± Steam); the remaining option bits / error / rinse_refill are still
-// TODO. See the processAABB comment for the field layout, and the companion
-// lg-dishwasher-local project (research/notes/raw-tlv-decode.md) for the full schema.
+// TODO. See the processAABB comment for the field layout.
 //
 // The entity set mirrors the official ha-smartthinq-sensors integration (the
 // `lg_lavastoviglie_*` entities) so existing automations keep working, plus the

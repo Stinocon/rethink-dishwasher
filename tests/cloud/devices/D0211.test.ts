@@ -8,8 +8,7 @@ const DEVICE_ID = 'test-id'
 const MODEL_ID = 'D0211'
 const META: Metadata = { modelId: MODEL_ID, modelName: MODEL_ID, swVersion: '1' }
 
-// Real wire frames from bridge captures of a DB365TXS / DBC435TSL dishwasher (the evidence
-// lives in the companion lg-dishwasher-local project, research/notes/raw-tlv-decode.md).
+// Real wire frames from bridge captures of a DB365TXS / DBC435TSL dishwasher.
 //
 // Status record offsets are relative to the CURRENT record: on an 0xec frame record1 at
 // body[2..27] is the PRIOR minute and record2 at body[28..53] is the current reading.
