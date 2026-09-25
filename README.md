@@ -1,5 +1,9 @@
 # rethink — dishwasher fork
 
+> **This is the pre-rebase development line.** The current one is `rebase/v0.1.0` — the D0211
+> handler rebased onto rethink `v0.1.0`, and the source the add-on builds (see below). `master`
+> is kept as the rollback.
+
 Fork of [anszom/rethink](https://github.com/anszom/rethink) that adds support for **LG ThinQ
 dishwashers** (model `D0211`, deviceType 204 — sold as DB365TXS / DBC435TSL and similar).
 
@@ -33,10 +37,8 @@ published as `HH:MM:SS` strings. Every component carries an explicit `default_en
 entity IDs are deterministic (`sensor.lg_dishwasher_*` / `binary_sensor.lg_dishwasher_*`)
 rather than slugified from the English names. Still unimplemented: the other option bits
 (`dual_zone`, `half_load`, `high_temp`, `extra_dry`), `error`, `rinse_refill`, and the full
-course enum. The decode
-is documented in the companion
-[lg-dishwasher-local](https://github.com/Stinocon/lg-dishwasher-local) project
-(`research/notes/raw-tlv-decode.md`).
+course enum. The decode is documented in the
+`processAABB` comment in [`cloud/devices/D0211.ts`](cloud/devices/D0211.ts).
 
 ## Why a fork instead of an upstream pull request
 
