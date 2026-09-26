@@ -16,7 +16,6 @@ const META: Metadata = { modelId: MODEL_ID, modelName: MODEL_ID, swVersion: '1' 
 // one. Offsets below are relative to the current record, so in a packet they land at
 // 30 + offset for 0xec.
 const OPTION_BYTE = 14
-const STATUS_BYTE = 13
 const CURRENT_RECORD_0XEC = 30
 
 // State 0x01 with a program selected on the panel: course 0x02 (Intensive) and the steam bit
@@ -75,24 +74,16 @@ const HANDSHAKE = buf(
     'AA373231020153414134313236333932350000D1DB00008000000000000253414134313236313032300000FFA7FFFC000000000000A5BB',
 )
 
-// Set one bit in the current record of a real frame. The transferred bit positions come from an
-// independent handler for the same record layout and have never been seen on this appliance, so
-// these tests pin which entity a bit drives; the wire position stays the prediction.
+// Set one bit in the current record of a real frame. Used only by the defensive tests below: the
+// bit positions the decode publishes are the ones measured here, so this helper never stands in
+// for a captured frame as evidence — it only checks that a bit nobody publishes stays silent.
 function withBit(frame: Buffer, offset: number, bit: number): Buffer {
     const copy = Buffer.from(frame)
     copy[CURRENT_RECORD_0XEC + offset] |= bit
     return copy
 }
 
-const OPTION_PROPS = [
-    'delay_start',
-    'energy_saver',
-    'extra_dry',
-    'high_temp',
-    'dual_zone',
-    'half_load',
-    'steam',
-] as const
+const OPTION_PROPS = ['energy_saver', 'dual_zone', 'steam'] as const
 
 function makeDevice() {
     const ha = new MockHAConnection()
@@ -113,17 +104,11 @@ describe(MODEL_ID, () => {
         // Assistant as a permanently unknown entity, so this list must equal what processAABB
         // can fill: extend it only together with the decode that feeds the new entity.
         assert.deepEqual(Object.keys(components).sort(), [
-            'child_lock',
             'current_course',
-            'delay_start',
             'door_open',
             'dual_zone',
             'energy_saver',
-            'extra_dry',
-            'half_load',
-            'high_temp',
             'initial_time',
-            'night_dry',
             'process_state',
             'remaining_time',
             'run_state',
@@ -148,7 +133,7 @@ describe(MODEL_ID, () => {
         // The other direction of the entity set: a component left declared after its publish call
         // was removed is just as much a phantom, and the pinned list above cannot see it. Every
         // publish is unconditional for the frame that carries it, so one status frame plus the
-        // counter frame fill all 18 and the two sets must match exactly.
+        // counter frame fill all twelve and the two sets must match exactly.
         const { ha, thinq } = makeDevice()
         const components = ha.devices[DEVICE_ID].config!.components as Record<string, unknown>
         thinq.emit('data', RUNNING_INTENSIVE_NO_OPTIONS)
@@ -202,24 +187,6 @@ describe(MODEL_ID, () => {
         }
     })
 
-    test('each transferred option bit drives exactly its own entity', () => {
-        for (const [bit, prop] of [
-            [0x01, 'delay_start'],
-            [0x04, 'extra_dry'],
-            [0x08, 'high_temp'],
-            [0x40, 'half_load'],
-        ] as const) {
-            const { ha, thinq } = makeDevice()
-            thinq.emit('data', withBit(RUNNING_INTENSIVE_NO_OPTIONS, OPTION_BYTE, bit))
-            const props = propsOf(ha)
-
-            assert.equal(props[prop], 'ON', `${prop} from bit 0x${bit.toString(16)}`)
-            for (const other of OPTION_PROPS) {
-                if (other !== prop) assert.equal(props[other], 'OFF', `${other} must stay OFF`)
-            }
-        }
-    })
-
     test('the unassigned option bit (0x20) drives no entity', () => {
         const { ha, thinq } = makeDevice()
         thinq.emit('data', withBit(RUNNING_INTENSIVE_NO_OPTIONS, OPTION_BYTE, 0x20))
@@ -250,23 +217,6 @@ describe(MODEL_ID, () => {
         assert.equal(props.energy_saver, 'ON', 'rec[14]=0x02 in the same frame')
     })
 
-    test('the transferred status bits drive child lock and night dry', () => {
-        for (const [bit, prop] of [
-            [0x01, 'child_lock'],
-            [0x80, 'night_dry'],
-        ] as const) {
-            const { ha, thinq } = makeDevice()
-            thinq.emit('data', withBit(RUNNING_INTENSIVE_NO_OPTIONS, STATUS_BYTE, bit))
-            const props = propsOf(ha)
-
-            assert.equal(props[prop], 'ON', `${prop} from bit 0x${bit.toString(16)}`)
-            const other = prop === 'child_lock' ? 'night_dry' : 'child_lock'
-            assert.equal(props[other], 'OFF', `${other} must stay OFF`)
-            assert.equal(props.salt_refill, 'OFF', 'salt is bit 3, untouched here')
-            assert.equal(props.door_open, 'OFF', 'door is bit 1, untouched here')
-        }
-    })
-
     test('idle with the panel awake (state 0x01) is not running', () => {
         // The case the captures could not show: after END this appliance falls silent, so a
         // resting-but-awake panel was never observed until it ran against the real bridge.
@@ -275,9 +225,9 @@ describe(MODEL_ID, () => {
         const props = propsOf(ha)
 
         assert.equal(props.run_state, 'Initial')
-        assert.equal(props.process_state, '-')
+        assert.equal(props.process_state, 'None')
         assert.equal(props.running, 'OFF', 'a resting panel is not a cycle')
-        assert.equal(props.current_course, '-', 'nothing is selected for a cycle')
+        assert.equal(props.current_course, 'None', 'nothing is selected for a cycle')
         assert.equal(props.initial_time, 233)
         assert.equal(props.remaining_time, 233)
         assert.equal(props.door_open, 'ON')
@@ -290,9 +240,9 @@ describe(MODEL_ID, () => {
         const props = propsOf(ha)
 
         assert.equal(props.run_state, 'Initial')
-        assert.equal(props.process_state, '-')
+        assert.equal(props.process_state, 'None')
         assert.equal(props.running, 'OFF')
-        assert.equal(props.current_course, '-')
+        assert.equal(props.current_course, 'None')
         assert.equal(props.steam, 'OFF')
         assert.equal(props.door_open, 'ON')
         assert.equal(props.initial_time, 251)
@@ -311,7 +261,7 @@ describe(MODEL_ID, () => {
         assert.equal(props.running, 'OFF')
         // The options byte clears one record before the course byte: no course is
         // published once the cycle is no longer active.
-        assert.equal(props.current_course, '-')
+        assert.equal(props.current_course, 'None')
         assert.equal(props.remaining_time, 1)
     })
 
@@ -321,8 +271,8 @@ describe(MODEL_ID, () => {
         const props = propsOf(ha)
 
         assert.equal(props.run_state, 'End')
-        assert.equal(props.process_state, '-')
-        assert.equal(props.current_course, '-')
+        assert.equal(props.process_state, 'None')
+        assert.equal(props.current_course, 'None')
         assert.equal(props.steam, 'OFF')
         assert.equal(props.energy_saver, 'OFF')
         assert.equal(props.running, 'OFF')
@@ -341,5 +291,118 @@ describe(MODEL_ID, () => {
         const { ha, thinq } = makeDevice()
         thinq.emit('data', HANDSHAKE)
         assert.deepEqual(propsOf(ha), {})
+    })
+
+    test('a truncated 0xeb frame publishes nothing', () => {
+        const { ha, thinq } = makeDevice()
+        // The head of the SENSING_STEAM record, cut short of its 26 bytes: the length guard has
+        // to drop it rather than read past the end of the buffer.
+        thinq.emit('data', buf('AA1432EB0018010000040B0200040B00007200BB'))
+        assert.deepEqual(propsOf(ha), {})
+    })
+
+    test('an 0xec frame carrying only record1 publishes nothing', () => {
+        const { ha, thinq } = makeDevice()
+        // 0xec with record1 alone: 28 body bytes, so the CURRENT record (base 28) does not exist.
+        // Without the length guard this would read past the end and publish undefined state,
+        // phase and time strings.
+        thinq.emit('data', buf('AA2032EC0018020300040B0200011F00007080020401000000000000000000BB'))
+        assert.deepEqual(propsOf(ha), {})
+    })
+
+    test('an undecoded course is published as None, not as its code', () => {
+        const { ha, thinq } = makeDevice()
+        // rec[7] = 0x0e, a course this decode does not know. The raw code would be a value
+        // outside the declared options, which Home Assistant refuses and logs.
+        thinq.emit('data', withBit(RUNNING_INTENSIVE_NO_OPTIONS, 7, 0x0c))
+        const props = propsOf(ha)
+
+        assert.equal(props.current_course, 'None')
+        // The rest of the same record is untouched.
+        assert.equal(props.run_state, 'Running')
+        assert.equal(props.process_state, 'Washing')
+    })
+
+    test('an undecoded run state is published as None, not as its code', () => {
+        const { ha, thinq } = makeDevice()
+        // rec[2] = 0x03, a state this decode does not know — and not a cycle, so nothing the
+        // cycle owns is published either.
+        thinq.emit('data', withBit(RUNNING_INTENSIVE_NO_OPTIONS, 2, 0x01))
+        const props = propsOf(ha)
+
+        assert.equal(props.run_state, 'None')
+        assert.equal(props.running, 'OFF')
+        assert.equal(props.current_course, 'None')
+    })
+
+    test('an undecoded process state is published as None, not as its code', () => {
+        const { ha, thinq } = makeDevice()
+        // rec[3] = 0x0a, a phase this decode does not know, on a frame that IS a running cycle: the
+        // state and the course must still be published, the phase not.
+        thinq.emit('data', withBit(RUNNING_INTENSIVE_NO_OPTIONS, 3, 0x08))
+        const props = propsOf(ha)
+
+        assert.equal(props.process_state, 'None')
+        assert.equal(props.run_state, 'Running')
+        assert.equal(props.current_course, 'Intensive')
+    })
+
+    test('a frame longer than the layout publishes nothing', () => {
+        const { ha, thinq } = makeDevice()
+        // 0xeb with two bytes too many: read as the single-record layout, it would still decode.
+        thinq.emit('data', buf('AA2232EB0018010000040B0200040B000072800204010000000000000000DEAD00BB'))
+        assert.deepEqual(propsOf(ha), {})
+
+        // 0xec with a third record: read as the two-record layout, record2 would be published as
+        // the current reading while record3 is. The sibling D30 handler met a longer 0xec once.
+        const record1 = RUNNING_DRY_STEAM.subarray(2, 28)
+        const record2 = RUNNING_DRY_STEAM.subarray(28, 54)
+        const body = Buffer.concat([buf('32EC'), record1, record2, record2])
+        thinq.emit('data', Buffer.concat([buf('AA54'), body, buf('0000BB')]))
+        assert.deepEqual(propsOf(ha), {})
+    })
+
+    test('every enum sensor declares the options its values come from', () => {
+        // The three state-like sensors are closed sets, so they are `enum` with an `options`
+        // list; a new one must not appear without it.
+        const { ha } = makeDevice()
+        const components = ha.devices[DEVICE_ID].config!.components as Record<string, Record<string, unknown>>
+        const enums = Object.entries(components).filter(([, c]) => c.device_class === 'enum')
+
+        assert.deepEqual(enums.map(([name]) => name).sort(), ['current_course', 'process_state', 'run_state'])
+        for (const [name, comp] of enums) {
+            const options = comp.options as string[] | undefined
+            assert.ok(Array.isArray(options) && options.length > 0, `${name} declares no options`)
+        }
+    })
+
+    test('no enum entity is ever published a value outside its options', () => {
+        // The room the options list leaves is 'None' alone: Home Assistant accepts that value
+        // unconditionally and shows it as unknown.
+        const { ha, thinq } = makeDevice()
+        const frames = [
+            RUNNING_INTENSIVE_NO_OPTIONS,
+            RUNNING_DRY_STEAM,
+            RUNNING_DUAL_ZONE,
+            RUNNING_SALT,
+            COMPLETING_OPTIONS_CLEARED,
+            END,
+            IDLE_ECO,
+            SENSING_STEAM,
+            // The two frames whose mapped byte is unknown are the ones a raw-code fallback
+            // would leak through, so they belong in this list.
+            withBit(RUNNING_INTENSIVE_NO_OPTIONS, 7, 0x0c),
+            withBit(RUNNING_INTENSIVE_NO_OPTIONS, 2, 0x01),
+        ]
+        for (const frame of frames) {
+            thinq.emit('data', frame)
+            const components = ha.devices[DEVICE_ID].config!.components as Record<string, Record<string, unknown>>
+            for (const [name, comp] of Object.entries(components)) {
+                if (comp.device_class !== 'enum') continue
+                const value = String(propsOf(ha)[name])
+                const options = comp.options as string[]
+                assert.ok(value === 'None' || options.includes(value), `${name} published ${value}`)
+            }
+        }
     })
 })
