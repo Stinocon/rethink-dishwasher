@@ -11,18 +11,22 @@ import { Enum } from '@/util/enum'
 //
 // Registers the model and exposes the entity set the decode can fill from fields confirmed on this
 // appliance: run state, process phase, current course, initial and remaining time, the cycle
-// counter, and the door, salt, energy-saver, dual-zone and steam flags. Nothing is declared that
-// has not been observed here.
+// counter, the door, salt, rinse-aid and child-lock indicators, and the delay-start, energy-saver,
+// dual-zone and steam options. Nothing is declared that has not been observed here.
 //
-// Six further option and status positions are known from the sibling D30 handler for the same
-// record layout (delay start, extra dry, high temp, half load, child lock, night dry). They are
-// documented per bit in the processAABB comment and deliberately NOT published: on this appliance
-// none of them has ever been seen, and an entity filled from a guess is worse than a missing one.
-// Each becomes an entity in the same commit that confirms it.
+// The six option and status positions that came from the sibling D30 handler for the same record
+// layout (delay start, extra dry, high temp, half load, child lock, night dry) were measured on
+// this appliance on 2026-09-26. Three are published — delay start, child lock and rinse refill
+// (which was never a D30 position at all). Three stay out, and the reason is the gate itself: the
+// option entities report only while a cycle runs, so a bit measured on an idle panel is a
+// measurement of a mapping the entity never shows in that state. High temp, half load and extra
+// dry were all measured at state 0x01 and each becomes an entity once a running cycle shows its
+// bit. Night dry does not exist on this model at all — no key on the panel and no such option in
+// the owner's manual.
 //
-// Still undecoded and therefore absent: the error codes, the rinse-aid indicator, the auto-door
-// status, the delay-start countdown, remote start and the completed-cycle flag. The field layout
-// and the provenance of every bit are in the processAABB comment.
+// Still undecoded and therefore absent: the error codes, the auto-door status, remote start and
+// the completed-cycle flag. The field layout and the provenance of every bit are in the
+// processAABB comment.
 //
 // The entity set mirrors the official ha-smartthinq-sensors integration (the
 // `lg_lavastoviglie_*` entities), plus the cloud fields that integration drops (superset).
@@ -54,6 +58,7 @@ const RUN_STATES = Enum.of({
 })
 
 const PROCESS_STATES = Enum.of({
+    Delay: 0x01,
     Washing: 0x02,
     Rinsing: 0x03,
     Drying: 0x04,
@@ -139,6 +144,14 @@ export default class Device extends AABBDevice {
                         name: 'Salt refill',
                         icon: 'mdi:water',
                     },
+                    rinse_refill: {
+                        platform: 'binary_sensor',
+                        unique_id: '$deviceid-rinse_refill',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_rinse_refill',
+                        state_topic: '$this/rinse_refill',
+                        name: 'Rinse refill',
+                        icon: 'mdi:cup-water',
+                    },
                     door_open: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-door_open',
@@ -147,6 +160,15 @@ export default class Device extends AABBDevice {
                         name: 'Door open',
                         icon: 'mdi:door-open',
                         device_class: 'door',
+                    },
+                    child_lock: {
+                        platform: 'binary_sensor',
+                        unique_id: '$deviceid-child_lock',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_child_lock',
+                        state_topic: '$this/child_lock',
+                        name: 'Child lock',
+                        icon: 'mdi:lock',
+                        device_class: 'lock',
                     },
                     dual_zone: {
                         platform: 'binary_sensor',
@@ -171,6 +193,14 @@ export default class Device extends AABBDevice {
                         state_topic: '$this/steam',
                         name: 'Steam',
                         icon: 'mdi:weather-fog',
+                    },
+                    delay_start: {
+                        platform: 'binary_sensor',
+                        unique_id: '$deviceid-delay_start',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_delay_start',
+                        state_topic: '$this/delay_start',
+                        name: 'Delay start',
+                        icon: 'mdi:timer-cog-outline',
                     },
                     tub_clean_counter: {
                         platform: 'sensor',
@@ -237,40 +267,76 @@ export default class Device extends AABBDevice {
     //   [13]     status bitfield, see below
     //   [14]     options bitfield, see below
     //
-    // The provenance of every bit is stated per bit. "Known position, not published" means the
-    // position comes from the sibling D30 handler for the same record layout and has NOT been
-    // observed on this appliance: publishing it would be an entity filled from a guess, so it
-    // waits for a wash here that toggles exactly that option, one variable at a time.
+    // The provenance of every bit is stated per bit, with the state it was measured in. That state
+    // matters twice over: the option entities are gated on a running cycle, so a bit measured on
+    // the idle panel is evidence of a mapping the entity cannot show in the state it was read in.
+    // Where the two differ, the bit is documented here and published once a running cycle shows
+    // it. Delay start, child lock and rinse refill were measured in a state the entity reports,
+    // so they are published.
     //
     //   [14] options, gated on the active state (the byte clears to 0x00 at cycle end — one
     //        record BEFORE the course byte, i.e. already at state 0x05 while [7] still holds
     //        the course):
-    //          0x01 delay start   known position, not published
-    //          0x02 energy saver  verified 2026-09-18
-    //          0x04 extra dry     known position, not published
-    //          0x08 high temp     known position, not published
-    //          0x10 dual zone     verified 2026-09-25: a constant-byte diff against the plain
+    //          0x01 delay start   measured 2026-09-26: selected on the idle panel, held through
+    //                             the countdown, and cleared at the moment the cycle began
+    //                             (0x11 -> 0x10). It means "a delay is pending", not "a delay was
+    //                             used", so after the cycle it is indistinguishable from no delay
+    //          0x02 energy saver  measured 2026-09-18
+    //          0x04 extra dry     measured 2026-09-26 on the idle panel ONLY, and deliberately not
+    //                             published: the manual says the appliance enables it on its own
+    //                             when the rinse aid is empty, so the byte has a documented way to
+    //                             change without the panel and its running behaviour is a
+    //                             different question from its selection. It becomes an entity
+    //                             once a running cycle shows the bit.
+    //          0x08 high temp     measured 2026-09-26 on the idle panel (+68 min on Auto,
+    //                             2:42 -> 3:50), NOT published yet: the entity is gated on a
+    //                             running cycle, and no wash has run with it selected. It becomes
+    //                             an entity when one does.
+    //          0x10 dual zone     measured 2026-09-25: a constant-byte diff against the plain
     //                             Auto baseline differs in this byte only, and costs no time
     //          0x20 unassigned by both sides
-    //          0x40 half load     known position, not published
-    //          0x80 steam         verified 2026-09-23: the only byte the option moves besides
+    //          0x40 half load     measured 2026-09-26 on the idle panel (-5 min on Auto,
+    //                             2:42 -> 2:37), NOT published yet: same reason as high temp.
+    //          0x80 steam         measured 2026-09-23: the only byte the option moves besides
     //                             the times (+66 min on Intensive)
     //   [13] status, not gated (these are persistent flags, not cycle state):
-    //          0x01 child lock    known position, not published
-    //          0x02 door open     verified (Auto Open Dry; the cloud does NOT report this —
-    //                             our superset)
-    //          0x08 salt refill   verified 2026-09-17: mid-wash the current record flips
+    //          0x01 child lock    measured 2026-09-26 both ways: 0x72 -> 0x73 on the panel and
+    //                             0x73 -> 0x72 off it, one bit each way. The 0x02 in those values
+    //                             is the door, which was open at the time.
+    //          0x02 door open     measured, and it is NOT the end of the cycle. The bit follows
+    //                             the auto-door: on the programmes with an active dry it opens
+    //                             within two minutes of the end, while on Eco it opened on
+    //                             2026-09-26 with 1:08 still on the countdown and the cycle ran
+    //                             on for another hour with the door open (the manual: drying on
+    //                             Eco is passive). A consumer waiting for this bit to mean
+    //                             "finished" is a cycle early on Eco. The cloud does not report
+    //                             this field at all — it is our superset.
+    //          0x04 rinse refill  measured 2026-09-26: the bit came on at 17:42:24 during the
+    //                             dry stage with the panel's rinse-aid lamp confirmed lit by
+    //                             eye, and cleared at 18:36:45 on the 0x05 completing record —
+    //                             with the cycle, unlike the salt bit, which stayed set for a
+    //                             day and a half after a refill. The lamp reading is certain;
+    //                             whether this reports the reservoir level or a warning raised
+    //                             for that cycle is not, and the difference matters to a
+    //                             consumer comparing it with salt_refill.
+    //          0x08 salt refill   measured 2026-09-17: mid-wash the current record flips
     //                             0x70 -> 0x78, and the cloud's own attribute, named `saltRefill`,
     //                             changed to match about 74 s later. The bit was clear again by
     //                             2026-09-19.
-    //          0x80 night dry     known position, not published
+    //          0x80 night dry     does not exist on this model: no key on the panel and no such
+    //                             option in the owner's manual. No entity, and the position is
+    //                             not waiting for a confirmation that can never come.
     //        Bits 0x10/0x20/0x40 are set in every captured status byte (0x70 is the constant
     //        base), unassigned by both sides, so nothing is published from them.
-    //        The sibling D30 handler reads 0x08 as the rinse-aid indicator. That is a regional
-    //        difference, not a disagreement: the D30's US unit has no salt reservoir and the bit
-    //        tracked its rinse aid, while here it was measured moving with the salt. Each handler
-    //        keeps the label its own model has, so the bit is published here as salt_refill and
-    //        no rinse-aid entity exists.
+    //        The sibling D30 handler reads 0x08 as the rinse-aid indicator. That is not the same
+    //        bit labelled differently: this model reports both reservoirs, 0x08 moved with the
+    //        salt (2026-09-17) and 0x04 with the rinse aid (2026-09-26), while a unit with no
+    //        salt reservoir needs only one of the two.
+    //
+    //        The delay-start countdown is a third thing again: at state 0x02 the appliance runs
+    //        process 0x01 for the whole reservation (measured 2026-09-26, 59m36s of it, in 61
+    //        records). It is a phase like the others, published as `Delay`, and it is the one the
+    //        `running` binary excludes — see the publish block.
     //
     // Transition frame 0x32 0xd8 <n>: a single byte carrying the cycle counter. Emitted once per
     // cycle within a couple of seconds of the process byte moving 0x03 -> 0x04, the rinse->dry
@@ -332,30 +398,50 @@ export default class Device extends AABBDevice {
 
         // run_state = granular machine state; process_state = phase. The phase comes from the
         // same record as the state, so an idle record (process 0x00) publishes 'None' for it.
+        // Process 0x01 is the delay-start reservation, a phase the appliance really reports — it
+        // is in the table, so it publishes 'Delay' instead of logging itself as undecoded.
         this.publishProperty('run_state', Device.formatRunState(state))
         this.publishProperty('process_state', Device.formatProcessState(process))
 
-        // `running` binary (on/off) mirrors the cloud's main on/off sensor — the entity the
-        // Live Activity automation keys on (to:on / from:on to:off). Only 0x02 counts: 0x01 is
-        // the panel awake with a program selected (see the layout note above), and treating it
-        // as running raised a live activity on an idle machine.
-        const active = state === 0x02
-        this.publishProperty('running', active ? 'ON' : 'OFF')
+        // Two different questions live in the same record, and they do not share an answer.
+        //
+        // `cycleState` asks whether the byte carries a selection at all: the option and course
+        // bytes clear at the 0x05 completing record, so outside state 0x02 they hold leftovers
+        // rather than a choice. It is what the options and the course gate on — including during
+        // the delay-start countdown, where the selection is real and the option byte is set.
+        //
+        // `running` asks whether a wash is executing, which the countdown is not: measured
+        // 2026-09-26, the countdown ran at state 0x02 with process 0x01 for 59m36s (61 records)
+        // and raised a live activity an hour before the cycle started. State 0x01 is the panel
+        // awake with a program selected (see the layout note above). Process 0x01 is excluded by
+        // value rather than by whitelisting the wash phases, so a phase this decode does not know
+        // yet cannot switch `running` off in the middle of a cycle — across every capture so far
+        // state 0x02 carries process 0x01 only in the countdown, and 0x02/0x03/0x04 otherwise.
+        const cycleState = state === 0x02
+        const running = cycleState && process !== 0x01
+        this.publishProperty('running', running ? 'ON' : 'OFF')
 
         // Course clears to 0x00 once the cycle ends (state 0x04/0x05), and that byte survives for
         // one record after END; only publish a course while the cycle is active, otherwise
         // 'None'.
-        this.publishProperty('current_course', active ? Device.formatCourse(course) : undefined)
+        this.publishProperty('current_course', cycleState ? Device.formatCourse(course) : undefined)
 
-        // The three measured option bits share the [14] byte, which clears at cycle end; gate on
-        // the active state so the entities read OFF once the cycle finishes.
-        const option = (bit: number) => (active && optionBits & bit ? 'ON' : 'OFF')
+        // The measured option bits share the [14] byte, which clears at cycle end; gate on the
+        // active state so the entities read OFF once the cycle finishes. Extra dry (0x04) is
+        // deliberately absent — see the layout note above.
+        const option = (bit: number) => (cycleState && optionBits & bit ? 'ON' : 'OFF')
+        this.publishProperty('delay_start', option(0x01))
         this.publishProperty('energy_saver', option(0x02))
         this.publishProperty('dual_zone', option(0x10))
         this.publishProperty('steam', option(0x80))
+        // High temp (0x08), half load (0x40) and extra dry (0x04) are measured on this appliance
+        // but have no entity: each was read on the idle panel only, and the entity reports while a
+        // cycle runs. See the layout note above.
 
         // Status bits are persistent flags, not cycle state, so they are not gated.
+        this.publishProperty('child_lock', statusBits & 0x01 ? 'ON' : 'OFF')
         this.publishProperty('door_open', statusBits & 0x02 ? 'ON' : 'OFF')
+        this.publishProperty('rinse_refill', statusBits & 0x04 ? 'ON' : 'OFF')
         this.publishProperty('salt_refill', statusBits & 0x08 ? 'ON' : 'OFF')
     }
 
