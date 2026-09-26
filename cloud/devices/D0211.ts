@@ -251,7 +251,10 @@ export default class Device extends AABBDevice {
     //          0x01 child lock    transferred
     //          0x02 door open     verified (Auto Open Dry; the cloud does NOT report this —
     //                             our superset)
-    //          0x08 salt refill   verified 2026-09-25 (flips when the salt is refilled)
+    //          0x08 salt refill   verified 2026-09-17: mid-wash the current record flips
+    //                             0x70 -> 0x78, and the cloud's own attribute, named `saltRefill`,
+    //                             changed to match about 74 s later. The bit was clear again by
+    //                             2026-09-19.
     //          0x80 night dry     transferred
     //        Bits 0x10/0x20/0x40 are set in every captured status byte (0x70 is the constant
     //        base), unassigned by both sides, so nothing is published from them.
