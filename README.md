@@ -36,7 +36,8 @@ Assistant's `duration` device class requires. Every component carries an explici
 `default_entity_id`, so the entity ids are deterministic (`sensor.lg_dishwasher_*` /
 `binary_sensor.lg_dishwasher_*`) instead of slugified from the English names.
 
-Still undecoded, and therefore absent: the error codes, the rinse-aid indicator, the auto-door
+Still undecoded, and therefore absent: the error codes, a rinse-aid indicator of its own (the bit
+that the D30 handler reports as rinse aid is the one this model reports as salt), the auto-door
 status, the delay-start countdown, remote start and the completed-cycle flag. The field layout and
 the provenance of every bit are in the `processAABB` comment in
 [`cloud/devices/D0211.ts`](cloud/devices/D0211.ts).
