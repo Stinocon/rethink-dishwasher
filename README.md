@@ -21,20 +21,24 @@ supports, installation, the management UI and the tooling, see the
 
 The dishwasher is **registered** — rethink no longer reports `thinq2 device type D0211 unknown` —
 and the whole published entity set is filled by the decode: run state, a separate `running`
-binary, process phase, current course, initial and remaining time, the cycle counter, the seven
-option flags (`energy_saver`, `steam`, `dual_zone`, `delay_start`, `extra_dry`, `high_temp`,
-`half_load`) and the four status flags (`door_open`, `salt_refill`, `child_lock`, `night_dry`).
+binary, process phase, current course, initial and remaining time, the cycle counter, the three
+measured option flags (`energy_saver`, `steam`, `dual_zone`) and the two measured status flags
+(`door_open`, `salt_refill`).
 
-The core fields are validated against captures of a real appliance (Eco, Auto ± Energy Saver,
-Intensive ± Steam, Auto + Dual Zone). Beyond them, **six option/status bit positions are
-transferred predictions** from an independent handler for the same record layout: published,
-flagged as such in the source, and unconfirmed until a wash toggles each one.
+The decode is validated against captures of a real appliance (Eco, Auto ± Energy Saver,
+Intensive ± Steam, Auto + Dual Zone). Six further option/status bit positions are known from the
+sibling D30 handler for the same record layout (delay start, extra dry, high temp, half load,
+child lock, night dry); they are documented per bit in the source and **not published**, because
+none of them has been observed on this appliance. Each becomes an entity in the commit that
+confirms it.
 
 State labels are English (`Off` / `Initial` / `Running` / `End` / `Completing`), not the Italian
-ones the official integration uses, and the two time sensors publish whole minutes — what Home
-Assistant's `duration` device class requires. Every component carries an explicit
-`default_entity_id`, so the entity ids are deterministic (`sensor.lg_dishwasher_*` /
-`binary_sensor.lg_dishwasher_*`) instead of slugified from the English names.
+ones the official integration uses; a state, phase or course the decode does not know is published
+as an unknown value, with the raw code going to the log rather than to an entity; and the two time
+sensors publish whole minutes — what Home Assistant's `duration` device class requires. Every
+component carries an explicit `default_entity_id`, so the entity ids are deterministic
+(`sensor.lg_dishwasher_*` / `binary_sensor.lg_dishwasher_*`) instead of slugified from the English
+names.
 
 Still undecoded, and therefore absent: the error codes, a rinse-aid indicator of its own (the bit
 that the D30 handler reports as rinse aid is the one this model reports as salt), the auto-door
