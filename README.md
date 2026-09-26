@@ -46,15 +46,16 @@ status, the delay-start countdown, remote start and the completed-cycle flag. Th
 the provenance of every bit are in the `processAABB` comment in
 [`cloud/devices/D0211.ts`](cloud/devices/D0211.ts).
 
-## Why a fork instead of an upstream pull request
+## Why a fork and an upstream pull request
 
-Two reasons, in order:
+Two things, in order:
 
 1. **Control over what I run.** I prefer to build and run my own add-on from my own repository,
    even when it is a fork of someone else's work.
 2. **Test before contributing.** The dishwasher definition is developed and validated here, on a
-   real appliance, before it is ready to be offered upstream. Once it decodes a real cycle and
-   proves itself, an upstream pull request will follow.
+   real appliance, and offered to
+   [`anszom/rethink`](https://github.com/anszom/rethink) as a pull request. The two carry the same
+   handler, and a change to the decode lands in both.
 
 None of this would exist without the rethink authors and everyone who reverse-engineered ThinQ
 before us — this fork stands entirely on their work.
